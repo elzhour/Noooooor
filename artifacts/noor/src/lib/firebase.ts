@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getAuth, signOut } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -39,10 +39,5 @@ export { app };
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
 export const rtdb = getDatabase(app);
-
-/* ─── Sign Out ───────────────────────────────────────────── */
-export async function firebaseSignOut(): Promise<void> {
-  try { await signOut(auth); } catch { /* ignore */ }
-}
 
 export const isConfigured = true;

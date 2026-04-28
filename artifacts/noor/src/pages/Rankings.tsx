@@ -1,62 +1,22 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Trophy, Eye, EyeOff, RefreshCw, MapPin } from 'lucide-react';
 import { TasbihIcon } from '@/components/NoorIcons';
 import {
-  subscribeToGlobalCounter,
-  subscribeToActiveSessions,
   syncUserLeaderboard,
   fetchLeaderboard,
+  fetchGovernorateLeaderboard,
   type LeaderboardEntry,
+  type GovernorateRanking,
 } from '@/lib/firestore';
 import { getCacheValue, getProfileCache, getSettingCache, queueSettingSync, getCurrentUid } from '@/lib/rtdb';
 import { auth } from '@/lib/firebase';
+import { EGYPT_GOVERNORATES } from '@/lib/constants';
 
 const VISIBILITY_KEY = 'noor_leaderboard_visible';
 
 function ensureUid(): string | null {
   return auth.currentUser?.uid ?? null;
-}
-
-function formatBigNumber(n: number): string {
-  if (n >= 1_000_000_000_000)
-    return (n / 1_000_000_000_000).toLocaleString('ar-EG', { maximumFractionDigits: 2 }) + ' تريليون';
-  if (n >= 1_000_000_000)
-    return (n / 1_000_000_000).toLocaleString('ar-EG', { maximumFractionDigits: 2 }) + ' مليار';
-  if (n >= 1_000_000)
-    return (n / 1_000_000).toLocaleString('ar-EG', { maximumFractionDigits: 2 }) + ' مليون';
-  return n.toLocaleString('ar-EG');
-}
-
-function useCountUp(target: number, duration = 600) {
-  const [display, setDisplay] = useState(target);
-  const animRef = useRef<number | null>(null);
-  const startRef = useRef<number | null>(null);
-  const fromRef = useRef(target);
-
-  useEffect(() => {
-    if (target === fromRef.current) return;
-    const from = fromRef.current;
-    fromRef.current = target;
-    if (animRef.current) cancelAnimationFrame(animRef.current);
-    startRef.current = null;
-    const step = (ts: number) => {
-      if (!startRef.current) startRef.current = ts;
-      const elapsed = ts - startRef.current;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(from + (target - from) * eased));
-      if (progress < 1) {
-        animRef.current = requestAnimationFrame(step);
-      } else {
-        setDisplay(target);
-      }
-    };
-    animRef.current = requestAnimationFrame(step);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, [target, duration]);
-
-  return display;
 }
 
 function useDarkMode() {
@@ -73,15 +33,12 @@ function useDarkMode() {
   return isDark;
 }
 
-
 function getLocalTasbeehCount(): number {
   try {
     const totals = getCacheValue<Record<string, number>>('tasbih_totals', {});
     return Object.values(totals).reduce((a, b) => a + b, 0);
   } catch { return 0; }
 }
-
-type RippleItem = { id: number; x: number; y: number };
 
 function OrnamentDivider({ flip = false, isDark }: { flip?: boolean; isDark: boolean }) {
   return (
@@ -100,7 +57,15 @@ function OrnamentDivider({ flip = false, isDark }: { flip?: boolean; isDark: boo
   );
 }
 
-function LeaderboardTab({ isDark }: { isDark: boolean }) {
+function medalColor(rank: number, fallback: string): string {
+  if (rank === 1) return '#FFD700';
+  if (rank === 2) return '#C0C0C0';
+  if (rank === 3) return '#CD7F32';
+  return fallback;
+}
+
+/* ── Tab 1: ترتيب الذاكرين ───────────────────────────────── */
+function UsersLeaderboardTab({ isDark }: { isDark: boolean }) {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -151,11 +116,7 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
       }
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? '';
-      if (code === 'permission-denied') {
-        setFetchError('permission-denied');
-      } else {
-        setFetchError('network');
-      }
+      setFetchError(code === 'permission-denied' ? 'permission-denied' : 'network');
     } finally {
       setLoading(false);
     }
@@ -194,13 +155,6 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
     setSyncing(false);
   };
 
-  const medalColor = (rank: number) => {
-    if (rank === 1) return '#FFD700';
-    if (rank === 2) return '#C0C0C0';
-    if (rank === 3) return '#CD7F32';
-    return gold;
-  };
-
   return (
     <div className="flex flex-col gap-4 pb-24">
       {userProfile && (
@@ -234,18 +188,18 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
               onClick={loadLeaderboard}
               className="p-2 rounded-full"
               style={{ background: 'rgba(193,154,107,0.12)', color: '#C19A6B' }}
+              data-testid="button-refresh-users"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-            {/* الزرار يقول الفعل اللي هيحصل لما تضغط عليه */}
             <button
               onClick={toggleVisibility}
               disabled={syncing}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all"
               style={{
                 background: userVisible
-                  ? 'rgba(239,68,68,0.1)'       // أحمر خفيف لو ظاهر → هتضغط تخفي
-                  : 'rgba(74,222,128,0.12)',      // أخضر خفيف لو مخفي → هتضغط تظهر
+                  ? 'rgba(239,68,68,0.1)'
+                  : 'rgba(74,222,128,0.12)',
                 border: userVisible
                   ? '1px solid rgba(239,68,68,0.3)'
                   : '1px solid rgba(74,222,128,0.35)',
@@ -253,13 +207,14 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
                 fontFamily: '"Tajawal", sans-serif',
                 opacity: syncing ? 0.6 : 1,
               }}
+              data-testid="button-toggle-visibility"
             >
               {syncing ? (
                 <RefreshCw size={12} className="animate-spin" />
               ) : userVisible ? (
-                <EyeOff size={12} />   // ظاهر → اضغط تخفي
+                <EyeOff size={12} />
               ) : (
-                <Eye size={12} />       // مخفي → اضغط تظهر
+                <Eye size={12} />
               )}
               {userVisible ? 'إخفاء' : 'إظهار'}
             </button>
@@ -267,28 +222,6 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
         </div>
       )}
 
-      {!userProfile && (
-        <div
-          className="rounded-2xl px-4 py-3 text-center"
-          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
-        >
-          <p className="text-xs" style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.7 }}>
-            سجّل دخولك من صفحة الصحبة لتظهر في الترتيب
-          </p>
-        </div>
-      )}
-
-      <div
-        className="rounded-xl px-3 py-2 flex items-center gap-2"
-        style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)' }}
-      >
-        <TasbihIcon size={14} className="shrink-0" style={{ color: '#4ade80' }} />
-        <p className="text-[11px]" style={{ color: '#4ade80', fontFamily: '"Tajawal", sans-serif', opacity: 0.85 }}>
-          كل تسبيحة تُحسب في العداد العالمي سواء كنت ظاهراً أو مخفياً
-        </p>
-      </div>
-
-      {/* رسالة خطأ الـ sync */}
       {(syncError === 'permission-denied' || fetchError === 'permission-denied') && (
         <div
           className="rounded-xl px-4 py-3"
@@ -298,7 +231,7 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
             خطأ في الصلاحيات — Firestore rules
           </p>
           <p className="text-[11px] leading-relaxed" style={{ color: '#ef4444', fontFamily: '"Tajawal", sans-serif', opacity: 0.8 }}>
-            افتح Firebase Console → مشروع noooooor-app → Firestore → Rules والصق القواعد المطلوبة ثم اضغط Publish
+            افتح Firebase Console → Firestore → Rules وتأكد من السماح للمستخدمين المسجلين
           </p>
         </div>
       )}
@@ -345,10 +278,11 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
                     : cardBg,
                   border: `1px solid rgba(193,154,107,${isMe ? '0.45' : isDark ? '0.15' : '0.2'})`,
                 }}
+                data-testid={`row-user-${entry.userId}`}
               >
                 <div className="w-7 flex items-center justify-center flex-shrink-0">
                   {rank <= 3 ? (
-                    <Trophy size={18} style={{ color: medalColor(rank) }} />
+                    <Trophy size={18} style={{ color: medalColor(rank, gold) }} />
                   ) : (
                     <span
                       className="text-xs font-bold"
@@ -362,7 +296,7 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
                 <div className="flex-1 min-w-0">
                   <p
                     className="text-sm font-bold truncate"
-                    style={{ color: isDark ? '#E8C98A' : '#7A4F1E', fontFamily: '"Tajawal", sans-serif' }}
+                    style={{ color: gold, fontFamily: '"Tajawal", sans-serif' }}
                   >
                     {entry.displayName}
                     {isMe && <span className="mr-1 text-[10px] opacity-60">(أنت)</span>}
@@ -381,7 +315,7 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
                   <TasbihIcon size={14} style={{ color: '#C19A6B' }} />
                   <span
                     className="text-sm font-black"
-                    style={{ color: isDark ? '#E8C98A' : '#7A4F1E', fontFamily: '"Tajawal", sans-serif' }}
+                    style={{ color: gold, fontFamily: '"Tajawal", sans-serif' }}
                   >
                     {entry.tasbeehCount.toLocaleString('ar-EG')}
                   </span>
@@ -395,62 +329,191 @@ function LeaderboardTab({ isDark }: { isDark: boolean }) {
   );
 }
 
+/* ── Tab 2: ترتيب المحافظات ──────────────────────────────── */
+function GovernoratesLeaderboardTab({ isDark }: { isDark: boolean }) {
+  const [entries, setEntries] = useState<GovernorateRanking[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const gold = isDark ? '#E8C98A' : '#7A4F1E';
+  const cardBg = isDark ? 'rgba(193,154,107,0.06)' : 'rgba(193,154,107,0.08)';
+  const cardBorder = `rgba(193,154,107,${isDark ? '0.2' : '0.3'})`;
+
+  const userProfile = getProfileCache();
+  const myGovernorateId = userProfile?.governorateId ?? null;
+
+  const loadGovernorates = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const list = await fetchGovernorateLeaderboard();
+      setEntries(list);
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code ?? '';
+      setFetchError(code === 'permission-denied' ? 'permission-denied' : 'network');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadGovernorates(); }, [loadGovernorates]);
+
+  // ابحث عن مرتبة محافظة المستخدم لو موجود
+  const myRank = myGovernorateId
+    ? entries.findIndex((e) => e.id === myGovernorateId) + 1 || null
+    : null;
+
+  const flagFor = (id: string): string | undefined =>
+    EGYPT_GOVERNORATES.find((g) => g.id === id)?.flag;
+
+  return (
+    <div className="flex flex-col gap-4 pb-24">
+      {userProfile?.governorateName && (
+        <div
+          className="rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+          style={{ background: cardBg, border: `1px solid ${cardBorder}` }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <MapPin size={14} style={{ color: '#C19A6B' }} />
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: gold, fontFamily: '"Tajawal", sans-serif' }}>
+                محافظتك: {userProfile.governorateName}
+              </p>
+              <p className="text-[11px]" style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.7 }}>
+                {myRank
+                  ? `المرتبة #${myRank.toLocaleString('ar-EG')} — ساعدها تطلع للأول`
+                  : 'سبّح عشان محافظتك تظهر في الترتيب'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={loadGovernorates}
+            className="p-2 rounded-full flex-shrink-0"
+            style={{ background: 'rgba(193,154,107,0.12)', color: '#C19A6B' }}
+            data-testid="button-refresh-governorates"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      )}
+
+      {fetchError === 'permission-denied' && (
+        <div
+          className="rounded-xl px-4 py-3"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
+        >
+          <p className="text-xs" style={{ color: '#ef4444', fontFamily: '"Tajawal", sans-serif' }}>
+            خطأ في الصلاحيات — تحقق من قواعد Firestore لمجموعة governorateLeaderboard
+          </p>
+        </div>
+      )}
+      {fetchError === 'network' && (
+        <div
+          className="rounded-xl px-4 py-3"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}
+        >
+          <p className="text-xs" style={{ color: '#ef4444', fontFamily: '"Tajawal", sans-serif' }}>
+            تعذّر الاتصال بالخادم — تأكد من الإنترنت واضغط ↻
+          </p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <RefreshCw size={24} className="animate-spin" style={{ color: '#C19A6B', opacity: 0.5 }} />
+        </div>
+      ) : entries.length === 0 && !fetchError ? (
+        <div className="text-center py-10">
+          <Trophy size={32} style={{ color: '#C19A6B', opacity: 0.3, margin: '0 auto 8px' }} />
+          <p className="text-sm" style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.5 }}>
+            لسه مفيش تسبيح من أي محافظة
+          </p>
+          <p className="text-xs mt-1" style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.35 }}>
+            ابدأ سبّح عشان محافظتك تظهر هنا
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((entry, idx) => {
+            const rank = idx + 1;
+            const isMine = entry.id === myGovernorateId;
+            const flag = flagFor(entry.id);
+            return (
+              <motion.div
+                key={entry.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.03 }}
+                className="flex items-center gap-3 rounded-2xl px-4 py-3"
+                style={{
+                  background: isMine
+                    ? `rgba(193,154,107,${isDark ? '0.15' : '0.18'})`
+                    : cardBg,
+                  border: `1px solid rgba(193,154,107,${isMine ? '0.45' : isDark ? '0.15' : '0.2'})`,
+                }}
+                data-testid={`row-governorate-${entry.id}`}
+              >
+                <div className="w-7 flex items-center justify-center flex-shrink-0">
+                  {rank <= 3 ? (
+                    <Trophy size={18} style={{ color: medalColor(rank, gold) }} />
+                  ) : (
+                    <span
+                      className="text-xs font-bold"
+                      style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.5 }}
+                    >
+                      {rank.toLocaleString('ar-EG')}
+                    </span>
+                  )}
+                </div>
+
+                {flag ? (
+                  <img
+                    src={flag}
+                    alt={entry.name}
+                    className="w-8 h-6 object-cover rounded flex-shrink-0"
+                    style={{ border: `1px solid rgba(193,154,107,0.3)` }}
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-8 h-6 rounded flex-shrink-0" style={{ background: 'rgba(193,154,107,0.15)' }} />
+                )}
+
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-sm font-bold truncate"
+                    style={{ color: gold, fontFamily: '"Tajawal", sans-serif' }}
+                  >
+                    {entry.name}
+                    {isMine && <span className="mr-1 text-[10px] opacity-60">(محافظتك)</span>}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <TasbihIcon size={14} style={{ color: '#C19A6B' }} />
+                  <span
+                    className="text-sm font-black"
+                    style={{ color: gold, fontFamily: '"Tajawal", sans-serif' }}
+                  >
+                    {entry.totalCount.toLocaleString('ar-EG')}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Main Component ─────────────────────────────────────── */
-export function GlobalCounter() {
-  const [count, setCount] = useState(0);
-  const [activeUsers, setActiveUsers] = useState(0);
-  const [ripples, setRipples] = useState<RippleItem[]>([]);
-  const [pulse, setPulse] = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [tab, setTab] = useState<'counter' | 'leaderboard'>('counter');
-  const rippleIdRef = useRef(0);
-  const displayCount = useCountUp(count);
-  const prevCountRef = useRef(count);
+export function Rankings() {
+  const [tab, setTab] = useState<'users' | 'governorates'>('users');
   const isDark = useDarkMode();
 
   const bg = isDark
     ? 'radial-gradient(ellipse at center, #1a1208 0%, #0d0a05 60%, #080603 100%)'
     : 'radial-gradient(ellipse at center, #FAF4EA 0%, #F0E4CF 55%, #E6D5B5 100%)';
-  const numberColor = isDark ? '#E8C98A' : '#7A4F1E';
-  const numberShadow = isDark
-    ? '0 0 30px rgba(232,201,138,0.6)'
-    : '0 2px 10px rgba(122,79,30,0.25)';
-
-  const triggerPulse = useCallback(() => {
-    setPulse(true);
-    setTimeout(() => setPulse(false), 600);
-    const id = ++rippleIdRef.current;
-    setRipples((r) => [...r, { id, x: 50, y: 50 }]);
-    setTimeout(() => setRipples((r) => r.filter((x) => x.id !== id)), 1200);
-  }, []);
-
-  useEffect(() => {
-    if (count !== prevCountRef.current && count > prevCountRef.current) {
-      triggerPulse();
-    }
-    prevCountRef.current = count;
-  }, [count, triggerPulse]);
-
-  /* Firestore real-time subscriptions */
-  useEffect(() => {
-    setConnected(false);
-
-    const unsubCounter = subscribeToGlobalCounter(({ count: c }) => {
-      setCount(c);
-      setConnected(true);
-    });
-
-    const unsubSessions = subscribeToActiveSessions((n) => {
-      setActiveUsers(n);
-    });
-
-    return () => {
-      unsubCounter();
-      unsubSessions();
-    };
-  }, []);
-
-  const digits = displayCount.toLocaleString('ar-EG');
 
   return (
     <div
@@ -458,7 +521,7 @@ export function GlobalCounter() {
       style={{ background: bg }}
       dir="rtl"
     >
-      {/* Animated background grid */}
+      {/* Background grid */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <svg
           className="absolute inset-0 w-full h-full"
@@ -467,50 +530,36 @@ export function GlobalCounter() {
           preserveAspectRatio="xMidYMid slice"
         >
           <defs>
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <pattern id="grid-rankings" width="40" height="40" patternUnits="userSpaceOnUse">
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#C19A6B" strokeWidth="0.5" />
             </pattern>
           </defs>
-          <rect width="100%" height="100%" fill="url(#grid)" />
+          <rect width="100%" height="100%" fill="url(#grid-rankings)" />
         </svg>
-
-        <AnimatePresence>
-          {ripples.map((r) => (
-            <motion.div
-              key={r.id}
-              className="absolute rounded-full"
-              style={{ borderColor: 'rgba(193,154,107,0.4)', borderWidth: 1, borderStyle: 'solid' }}
-              initial={{ width: 80, height: 80, opacity: 0.7, x: '-50%', y: '-50%', left: '50%', top: '42%' }}
-              animate={{ width: 500, height: 500, opacity: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 1.1, ease: 'easeOut' }}
-            />
-          ))}
-        </AnimatePresence>
       </div>
 
-      {/* Top ornament + title */}
+      {/* Header */}
       <div className="relative z-10 flex flex-col items-center pt-8 pb-4">
         <OrnamentDivider isDark={isDark} />
         <h1
           className="text-2xl font-bold tracking-widest mt-4"
           style={{ fontFamily: '"Tajawal", sans-serif', color: '#C19A6B', letterSpacing: '0.2em' }}
         >
-          العداد العالمي
+          الترتيب
         </h1>
         <p
           className="text-xs mt-1"
           style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: isDark ? 0.5 : 0.65 }}
         >
-          مجموع تسابيح الذاكرين حول العالم
+          ترتيب الذاكرين والمحافظات
         </p>
       </div>
 
       {/* Tabs */}
       <div className="relative z-10 flex items-center justify-center gap-2 px-6 mb-4">
         {([
-          { key: 'counter', label: 'العداد' },
-          { key: 'leaderboard', label: 'الترتيب العالمي' },
+          { key: 'users', label: 'ترتيب الذاكرين' },
+          { key: 'governorates', label: 'ترتيب المحافظات' },
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -524,6 +573,7 @@ export function GlobalCounter() {
               border: `1px solid rgba(193,154,107,${tab === t.key ? '0.6' : '0.2'})`,
               color: tab === t.key ? (isDark ? '#E8C98A' : '#7A4F1E') : '#C19A6B',
             }}
+            data-testid={`button-tab-${t.key}`}
           >
             {t.label}
           </button>
@@ -533,122 +583,13 @@ export function GlobalCounter() {
       {/* Tab content */}
       <div className="relative z-10 flex-1 overflow-y-auto px-4">
         <AnimatePresence mode="wait">
-          {tab === 'counter' ? (
-            <motion.div
-              key="counter"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col items-center"
-            >
-              {/* Main counter circle */}
-              <div className="relative flex items-center justify-center mt-2 mb-6">
-                <motion.div
-                  animate={pulse ? { scale: [1, 1.08, 1], opacity: [0.15, 0.4, 0.15] } : { scale: 1, opacity: 0.15 }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                  className="absolute rounded-full"
-                  style={{ width: 280, height: 280, background: 'radial-gradient(circle, rgba(193,154,107,0.25) 0%, transparent 70%)' }}
-                />
-                <motion.div
-                  animate={pulse ? { scale: [1, 1.04, 1] } : { scale: 1 }}
-                  transition={{ duration: 0.4, ease: 'easeOut' }}
-                  className="relative flex flex-col items-center justify-center rounded-full"
-                  style={{
-                    width: 220,
-                    height: 220,
-                    border: `1px solid rgba(193,154,107,${isDark ? '0.3' : '0.45'})`,
-                    background: `rgba(193,154,107,${isDark ? '0.05' : '0.08'})`,
-                    boxShadow: pulse
-                      ? `0 0 60px rgba(193,154,107,${isDark ? '0.35' : '0.25'}), inset 0 0 40px rgba(193,154,107,0.08)`
-                      : `0 0 30px rgba(193,154,107,${isDark ? '0.12' : '0.1'}), inset 0 0 20px rgba(193,154,107,0.04)`,
-                  }}
-                >
-                  <div
-                    className="absolute rounded-full"
-                    style={{ inset: 8, border: `1px solid rgba(193,154,107,${isDark ? '0.15' : '0.22'})` }}
-                  />
-                  <motion.span
-                    key={Math.floor(displayCount / 1000)}
-                    initial={{ opacity: 0.7 }}
-                    animate={{ opacity: 1 }}
-                    className="relative z-10 text-center px-4 leading-none"
-                    style={{
-                      fontFamily: '"Tajawal", sans-serif',
-                      fontSize: digits.length > 10 ? '1.6rem' : digits.length > 7 ? '2.2rem' : '3rem',
-                      fontWeight: 900,
-                      color: numberColor,
-                      textShadow: numberShadow,
-                    }}
-                  >
-                    {digits}
-                  </motion.span>
-                  <span
-                    className="relative z-10 text-[10px] mt-1"
-                    style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.7 }}
-                  >
-                    تسبيحة
-                  </span>
-                </motion.div>
-              </div>
-
-              {/* Stats row */}
-              <div className="flex items-center gap-6 mb-6">
-                <div className="flex flex-col items-center gap-1">
-                  <span
-                    className="text-xl font-black"
-                    style={{ color: numberColor, fontFamily: '"Tajawal", sans-serif' }}
-                  >
-                    {formatBigNumber(displayCount)}
-                  </span>
-                  <span
-                    className="text-[10px]"
-                    style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.6 }}
-                  >
-                    إجمالي التسبيح
-                  </span>
-                </div>
-
-                <div
-                  className="w-px h-8"
-                  style={{ background: `rgba(193,154,107,${isDark ? '0.2' : '0.3'})` }}
-                />
-
-                <div className="flex flex-col items-center gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{
-                        background: connected ? '#4ade80' : '#ef4444',
-                        boxShadow: connected ? '0 0 6px #4ade80' : 'none',
-                      }}
-                    />
-                    <span
-                      className="text-xl font-black"
-                      style={{ color: numberColor, fontFamily: '"Tajawal", sans-serif' }}
-                    >
-                      {activeUsers.toLocaleString('ar-EG')}
-                    </span>
-                  </div>
-                  <span
-                    className="text-[10px]"
-                    style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif', opacity: 0.6 }}
-                  >
-                    ذاكر الآن
-                  </span>
-                </div>
-              </div>
-
-              {/* Bottom ornament */}
-              <OrnamentDivider flip isDark={isDark} />
+          {tab === 'users' ? (
+            <motion.div key="users" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <UsersLeaderboardTab isDark={isDark} />
             </motion.div>
           ) : (
-            <motion.div
-              key="leaderboard"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <LeaderboardTab isDark={isDark} />
+            <motion.div key="governorates" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <GovernoratesLeaderboardTab isDark={isDark} />
             </motion.div>
           )}
         </AnimatePresence>

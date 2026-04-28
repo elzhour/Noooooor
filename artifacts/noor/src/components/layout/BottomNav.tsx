@@ -162,34 +162,43 @@ function TasbihNav3D({ color }: { color: string }) {
   );
 }
 
-function CounterNav3D({ color }: { color: string }) {
-  const hi = "rgba(255,255,255,0.35)";
+function RankingNav3D({ color }: { color: string }) {
+  const hi = "rgba(255,255,255,0.4)";
+  const sh = "rgba(0,0,0,0.18)";
   return (
     <svg width={22} height={22} viewBox="0 0 24 24" fill="none">
-      {/* Globe shadow */}
-      <circle cx="12.3" cy="12.3" r="9" fill={color} fillOpacity="0.13" />
-      {/* Globe */}
-      <circle cx="12" cy="12" r="9" fill={color} fillOpacity="0.12"
-        stroke={color} strokeWidth="1.5" />
-      {/* Top gloss */}
-      <path d="M6 7 Q9 3.5 15 4" stroke={hi} strokeWidth="1.2" fill="none" strokeLinecap="round" />
+      {/* Trophy shadow */}
+      <path d="M8.3 4.3 H15.7 V9.7 a3.7 3.7 0 0 1 -7.4 0 Z" fill={color} fillOpacity="0.18"
+        transform="translate(0.35,0.35)" />
 
-      {/* Latitude lines */}
-      <ellipse cx="12" cy="12" rx="9" ry="3.5" stroke={color} strokeWidth="0.9" fill="none" strokeOpacity="0.5" />
-      <ellipse cx="12" cy="12" rx="9" ry="6.5" stroke={color} strokeWidth="0.7" fill="none" strokeOpacity="0.3" />
-      {/* Longitude lines */}
-      <ellipse cx="12" cy="12" rx="3.5" ry="9" stroke={color} strokeWidth="0.9" fill="none" strokeOpacity="0.5" />
+      {/* Trophy cup body */}
+      <path d="M8 4 H16 V9.5 a4 4 0 0 1 -8 0 Z"
+        fill={color} fillOpacity="0.85" stroke={color} strokeWidth="1.2"
+        strokeLinejoin="round" />
+      {/* Cup highlight (lit side) */}
+      <path d="M8.5 4.5 H10 V9 a2.5 2.5 0 0 0 1.5 2.3 V13 a4 4 0 0 1 -3 -3.5 Z" fill={hi} />
+      {/* Cup shadow (right side) */}
+      <path d="M14 4.5 H15.5 V9.5 a3.5 3.5 0 0 1 -1.5 2.85 V11 a3 3 0 0 0 0 -5 Z" fill={sh} />
 
-      {/* People dots */}
-      {[
-        { x: 8, y: 9 }, { x: 14.5, y: 8 }, { x: 10.5, y: 14 }, { x: 16, y: 13 },
-      ].map((p, i) => (
-        <g key={i}>
-          <circle cx={p.x + 0.2} cy={p.y + 0.2} r="1.1" fill={color} fillOpacity="0.2" />
-          <circle cx={p.x} cy={p.y} r="1.1" fill={color} />
-          <circle cx={p.x - 0.4} cy={p.y - 0.4} r="0.42" fill="white" fillOpacity="0.55" />
-        </g>
-      ))}
+      {/* Left handle */}
+      <path d="M8 5.5 C5.5 5.5 5 7 5 8 C5 9.5 6.5 10.5 8 10.5"
+        stroke={color} strokeWidth="1.3" fill="none" strokeLinecap="round" />
+      {/* Right handle */}
+      <path d="M16 5.5 C18.5 5.5 19 7 19 8 C19 9.5 17.5 10.5 16 10.5"
+        stroke={color} strokeWidth="1.3" fill="none" strokeLinecap="round" />
+
+      {/* Stem */}
+      <rect x="11" y="14.5" width="2" height="3" fill={color} fillOpacity="0.85" />
+      <rect x="11" y="14.5" width="0.7" height="3" fill={hi} />
+
+      {/* Base */}
+      <rect x="7.5" y="17.5" width="9" height="2.2" rx="0.5"
+        fill={color} fillOpacity="0.85" stroke={color} strokeWidth="0.8" />
+      <rect x="7.5" y="17.5" width="9" height="0.7" rx="0.4" fill={hi} />
+
+      {/* Star on cup */}
+      <polygon points="12,5.8 12.7,7.3 14.3,7.5 13.1,8.6 13.4,10.2 12,9.4 10.6,10.2 10.9,8.6 9.7,7.5 11.3,7.3"
+        fill="white" fillOpacity="0.7" />
     </svg>
   );
 }
@@ -226,7 +235,7 @@ const NAV_ITEMS: { id: string; path: string; Icon: NavIconComp; label: string }[
   { id: "quran",        path: "/quran",        Icon: QuranNav3D,   label: "القرآن"   },
   { id: "azkar",        path: "/azkar",        Icon: AzkarNav3D,   label: "الأذكار"  },
   { id: "tasbih",       path: "/tasbih",       Icon: TasbihNav3D,  label: "التسبيح"  },
-  { id: "counter",      path: "/counter",      Icon: CounterNav3D, label: "العداد"   },
+  { id: "ranking",      path: "/ranking",      Icon: RankingNav3D, label: "الترتيب"  },
   { id: "more",         path: "/more",         Icon: MoreNav3D,    label: "المزيد"   },
 ];
 

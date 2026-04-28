@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, type ReactNode, type ComponentType } from 'react';
 import { Link } from 'wouter';
 import {
-  ChevronLeft, Sun, Moon, LogOut, Share2,
+  ChevronLeft, Sun, Moon, Share2,
   Star, Copy, X, Check, Mail, MessageSquare, Settings2, Pencil, Clock,
   Lock, Eye, EyeOff, ShieldCheck,
 } from 'lucide-react';
 import { useUserSetting } from '@/hooks/use-user-setting';
 import { motion, AnimatePresence } from 'framer-motion';
-import { firebaseSignOut, auth } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { linkWithCredential, EmailAuthProvider, createUserWithEmailAndPassword } from 'firebase/auth';
 import { deleteLeaderboardEntry } from '@/lib/firestore';
 import { getProfileCache, updateProfileInRTDB, initUserSync } from '@/lib/rtdb';
@@ -39,41 +39,6 @@ function IslamicPattern() {
         <line x1="0" y1="20" x2="200" y2="20" stroke="#C19A6B" strokeWidth="0.5" opacity="0.5" strokeDasharray="4 8" />
       </g>
     </svg>
-  );
-}
-
-function LogoutConfirmDialog({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
-      <motion.div
-        initial={{ scale: 0.85, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.85, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="relative bg-card border border-border rounded-3xl p-6 w-full max-w-xs shadow-2xl text-center"
-      >
-        <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-          <LogOut className="w-7 h-7 text-red-500" />
-        </div>
-        <h3 className="font-bold text-lg mb-1" style={{ fontFamily: '"Tajawal", sans-serif' }}>تسجيل الخروج</h3>
-        <p className="text-muted-foreground text-sm mb-5" style={{ fontFamily: '"Tajawal", sans-serif' }}>
-          هل تريد تسجيل الخروج وتغيير بياناتك؟
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={onCancel}
-            className="flex-1 py-3 rounded-2xl bg-secondary text-foreground font-bold text-sm transition-colors"
-            style={{ fontFamily: '"Tajawal", sans-serif' }}
-          >إلغاء</button>
-          <button
-            onClick={onConfirm}
-            className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold text-sm transition-colors"
-            style={{ fontFamily: '"Tajawal", sans-serif' }}
-          >خروج</button>
-        </div>
-      </motion.div>
-    </div>
   );
 }
 
@@ -710,7 +675,6 @@ function GuestUpgradeSheet({ onClose, onDone }: { onClose: () => void; onDone: (
 
 export function MoreMenu() {
   const [theme, setTheme] = useUserSetting<'light' | 'dark'>('theme', 'light');
-  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [showEditNameDialog, setShowEditNameDialog] = useState(false);
   const [profileVersion, setProfileVersion] = useState(0);
@@ -721,11 +685,6 @@ export function MoreMenu() {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     document.documentElement.classList.toggle('dark', newTheme === 'dark');
-  };
-
-  const handleLogoutConfirm = async () => {
-    await firebaseSignOut();
-    window.dispatchEvent(new Event('app-logout'));
   };
 
   const handleSaveName = async (newName: string) => {
@@ -757,9 +716,6 @@ export function MoreMenu() {
   return (
     <div className="pb-24 pt-6 px-4 max-w-lg mx-auto" dir="rtl">
       <AnimatePresence>
-        {showLogoutDialog && (
-          <LogoutConfirmDialog onConfirm={handleLogoutConfirm} onCancel={() => setShowLogoutDialog(false)} />
-        )}
         {showShareSheet && (
           <ShareChooserSheet onClose={() => setShowShareSheet(false)} />
         )}
@@ -776,40 +732,31 @@ export function MoreMenu() {
 
       {/* User profile card */}
       {userProfile && (
-        <div className="mb-3 bg-card border border-border rounded-2xl p-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            {userProfile.photo ? (
-              <img src={userProfile.photo} alt={userProfile.name} className="w-10 h-10 rounded-full border-2 border-primary/30" referrerPolicy="no-referrer" />
-            ) : (
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-primary font-bold" style={{ fontFamily: '"Tajawal", sans-serif' }}>
-                  {(userProfile.name ?? '?')[0]}
-                </span>
-              </div>
-            )}
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="font-bold text-base" style={{ fontFamily: '"Tajawal", sans-serif' }}>{userProfile.name}</p>
-                <button
-                  onClick={() => setShowEditNameDialog(true)}
-                  className="w-6 h-6 rounded-full flex items-center justify-center transition-colors"
-                  style={{ background: 'rgba(193,154,107,0.12)' }}
-                  title="تعديل الاسم"
-                  data-testid="button-edit-name"
-                >
-                  <Pencil className="w-3 h-3 text-primary/70" />
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground" style={{ fontFamily: '"Tajawal", sans-serif' }}>{userProfile.governorateName}</p>
+        <div className="mb-3 bg-card border border-border rounded-2xl p-4 flex items-center gap-3 shadow-sm">
+          {userProfile.photo ? (
+            <img src={userProfile.photo} alt={userProfile.name} className="w-10 h-10 rounded-full border-2 border-primary/30" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+              <span className="text-primary font-bold" style={{ fontFamily: '"Tajawal", sans-serif' }}>
+                {(userProfile.name ?? '?')[0]}
+              </span>
             </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              <p className="font-bold text-base truncate" style={{ fontFamily: '"Tajawal", sans-serif' }} data-testid="text-username">{userProfile.name}</p>
+              <button
+                onClick={() => setShowEditNameDialog(true)}
+                className="w-6 h-6 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
+                style={{ background: 'rgba(193,154,107,0.12)' }}
+                title="تعديل الاسم"
+                data-testid="button-edit-name"
+              >
+                <Pencil className="w-3 h-3 text-primary/70" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground truncate" style={{ fontFamily: '"Tajawal", sans-serif' }} data-testid="text-user-governorate">{userProfile.governorateName}</p>
           </div>
-          <button
-            onClick={() => setShowLogoutDialog(true)}
-            className="p-2 bg-secondary rounded-full text-muted-foreground transition-colors"
-            title="تغيير البيانات"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
       )}
 

@@ -1,11 +1,74 @@
 import { TASBIH_TYPES } from '@/lib/constants';
-import { incrementGlobalCounter, recordTasbeehPress } from '@/lib/firestore';
-import { queueTasbihSync, flushRTDB, getCacheValue, getCurrentUid, todayKey } from '@/lib/rtdb';
+import {
+  syncUserLeaderboard,
+  incrementGovernorateCounter,
+  addPendingGovernorateCount,
+  getPendingGovernorateCount,
+  clearPendingGovernorateCount,
+} from '@/lib/firestore';
+import {
+  queueTasbihSync,
+  flushRTDB,
+  getCacheValue,
+  getCurrentUid,
+  getProfileCache,
+  getSettingCache,
+  todayKey,
+} from '@/lib/rtdb';
 import { auth } from '@/lib/firebase';
 import { BarChart2 } from 'lucide-react';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef } from 'react';
 import { useUserSetting } from '@/hooks/use-user-setting';
+
+const SESSION_FLUSH_INTERVAL_MS = 5 * 60 * 1000; // 5 دقائق
+
+/* جمع كل التسبيح في الذاكرة وبعتها مرة واحدة لـ Firestore:
+   - مرة لتحديث ترتيب المستخدم (sohbaLeaderboard)
+   - مرة لزيادة عداد المحافظة (governorateLeaderboard)
+   = كتابتين بس لكل جلسة، مش لكل ضغطة */
+async function flushSessionToFirestore(
+  totalsRef: { current: Record<string, number> },
+): Promise<void> {
+  const pending = getPendingGovernorateCount();
+  if (pending <= 0) return;
+
+  const profile = getProfileCache();
+  const uid = auth.currentUser?.uid;
+  if (!uid || !profile) return;
+
+  // امسح الـ pending فوراً عشان لو المستخدم ضغط في النص ما يضيعش
+  clearPendingGovernorateCount();
+
+  try {
+    const totalTasbeeh = Object.values(totalsRef.current).reduce((a, b) => a + b, 0);
+    const isPublic = getSettingCache<boolean>('noor_leaderboard_visible', false);
+
+    await syncUserLeaderboard({
+      userId: uid,
+      displayName: profile.name || 'ذاكر',
+      governorate: profile.governorateName || null,
+      isPublic,
+      tasbeehCount: totalTasbeeh,
+      quranCompletions: getCacheValue<number>('quran_completions', 0),
+      currentSurah: getCacheValue<number>('last_surah', 1),
+      azkarStreak: getCacheValue<number>('azkar_streak', 0),
+      tadabburStreak: getCacheValue<number>('tadabbur_streak', 0),
+      earnedBadges: [],
+    });
+
+    if (profile.governorateId && profile.governorateName) {
+      await incrementGovernorateCounter(
+        profile.governorateId,
+        profile.governorateName,
+        pending,
+      );
+    }
+  } catch {
+    // لو فشلت، رجّع الـ pending عشان نحاول تاني المرة الجاية
+    addPendingGovernorateCount(pending);
+  }
+}
 
 const BEAD_COUNT = 33;
 
@@ -133,10 +196,30 @@ export function Tasbih() {
   const count = counts[currentType.id] ?? 0;
   const total = totals[currentType.id] ?? 0;
 
-  // Flush on unmount
+  // Flush RTDB on unmount
   useEffect(() => {
     return () => {
       if (getCurrentUid()) flushRTDB();
+    };
+  }, []);
+
+  // إرسال الجلسة لـ Firestore: كل 5 دقائق + إخفاء الصفحة + إغلاقها
+  useEffect(() => {
+    const flush = () => { flushSessionToFirestore(totalsRef).catch(() => {}); };
+
+    const interval = setInterval(flush, SESSION_FLUSH_INTERVAL_MS);
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('beforeunload', flush);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('beforeunload', flush);
+      flush();
     };
   }, []);
 
@@ -160,12 +243,12 @@ export function Tasbih() {
     setTotals(newTotals);
     setDailyCount(newDaily);
 
-    // debounced write to RTDB (10s)
+    // debounced write to RTDB (10s) — البيانات الشخصية
     const uid = auth.currentUser?.uid;
     if (uid) queueTasbihSync(uid, newTotals, newCounts, newDaily);
 
-    incrementGlobalCounter(1).catch(() => {});
-    recordTasbeehPress().catch(() => {});
+    // عداد الجلسة المحلي — يُرسل لـ Firestore كل 5 دقائق أو نهاية الجلسة
+    addPendingGovernorateCount(1);
   };
 
   const handleResetConfirm = () => {

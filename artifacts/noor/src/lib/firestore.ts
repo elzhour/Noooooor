@@ -4,13 +4,10 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  onSnapshot,
   collection,
   getDocs,
   increment,
   serverTimestamp,
-  Timestamp,
-  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -42,105 +39,13 @@ export interface SohbaUserData {
   earnedBadges: string[];
 }
 
-/* ─── Global Counter ─────────────────────────────────────── */
-const COUNTER_DOC = doc(db, 'globalCounter', 'main');
-
-export async function initCounter(): Promise<number> {
-  const snap = await getDoc(COUNTER_DOC);
-  if (!snap.exists()) {
-    await setDoc(COUNTER_DOC, { totalCount: 0, updatedAt: serverTimestamp() });
-    return 0;
-  }
-  return (snap.data().totalCount as number) || 0;
+export interface GovernorateRanking {
+  id: string;
+  name: string;
+  totalCount: number;
 }
 
-export async function incrementGlobalCounter(amount = 1): Promise<void> {
-  // setDoc مع merge:true + increment() آمن تماماً:
-  // - لو الـ doc مش موجود: يعمله بـ totalCount = amount
-  // - لو موجود: يزيد totalCount بـ amount بشكل atomic
-  await setDoc(
-    COUNTER_DOC,
-    { totalCount: increment(amount), updatedAt: serverTimestamp() },
-    { merge: true },
-  );
-}
-
-export function subscribeToGlobalCounter(
-  callback: (data: { count: number }) => void,
-): Unsubscribe {
-  return onSnapshot(COUNTER_DOC, (snap) => {
-    if (snap.exists()) {
-      callback({ count: (snap.data().totalCount as number) || 0 });
-    } else {
-      callback({ count: 0 });
-    }
-  });
-}
-
-/* ─── Active Dhikr Sessions ─────────────────────────────── */
-// عدد الذاكرين الآن = من ضغطوا زرار التسبيح في آخر 3 دقائق
-const SESSIONS_COL = collection(db, 'activeSessions');
-const SESSION_TTL_MS = 3 * 60 * 1000; // 3 دقائق
-
-function getOrCreateSessionId(): string {
-  let sid = sessionStorage.getItem('noor_sid');
-  if (!sid) {
-    sid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    sessionStorage.setItem('noor_sid', sid);
-  }
-  return sid;
-}
-
-export async function recordTasbeehPress(): Promise<void> {
-  // يُستدعى من صفحة التسبيح عند كل ضغطة
-  // يسجّل/يجدد جلسة المستخدم في Firebase لحساب عدد الذاكرين الآن
-  try {
-    const sid = getOrCreateSessionId();
-    await setDoc(
-      doc(db, 'activeSessions', sid),
-      { lastSeen: serverTimestamp() },
-      { merge: true },
-    );
-  } catch { /* ignore */ }
-}
-
-export async function registerSession(sid: string): Promise<void> {
-  await setDoc(doc(db, 'activeSessions', sid), {
-    lastSeen: serverTimestamp(),
-  });
-}
-
-export async function refreshSession(sid: string): Promise<void> {
-  try {
-    await updateDoc(doc(db, 'activeSessions', sid), {
-      lastSeen: serverTimestamp(),
-    });
-  } catch {
-    await registerSession(sid);
-  }
-}
-
-export async function unregisterSession(sid: string): Promise<void> {
-  try {
-    await deleteDoc(doc(db, 'activeSessions', sid));
-  } catch { /* ignore */ }
-}
-
-export function subscribeToActiveSessions(
-  callback: (count: number) => void,
-): Unsubscribe {
-  return onSnapshot(SESSIONS_COL, (snap) => {
-    const cutoff = Date.now() - SESSION_TTL_MS;
-    let count = 0;
-    snap.forEach((d) => {
-      const ts = d.data().lastSeen as Timestamp | null;
-      if (ts && ts.toMillis() > cutoff) count++;
-    });
-    callback(count);
-  });
-}
-
-/* ─── Sohba / Leaderboard ───────────────────────────────── */
+/* ─── Sohba / User Leaderboard ──────────────────────────── */
 export async function syncUserLeaderboard(data: SohbaUserData): Promise<number> {
   const noorScore =
     Math.floor(data.tasbeehCount * 0.5) +
@@ -157,8 +62,6 @@ export async function syncUserLeaderboard(data: SohbaUserData): Promise<number> 
 }
 
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
-  // نجيب كل الـ docs بدون composite index
-  // ونفلتر ونرتب على جانب الـ client
   const snap = await getDocs(collection(db, 'sohbaLeaderboard'));
   const all = snap.docs.map((d) => d.data() as LeaderboardEntry);
   return all
@@ -182,4 +85,53 @@ export async function deleteLeaderboardEntry(userId: string): Promise<void> {
   try {
     await deleteDoc(doc(db, 'sohbaLeaderboard', userId));
   } catch { /* ignore */ }
+}
+
+/* ─── Governorate Leaderboard ───────────────────────────── */
+export async function incrementGovernorateCounter(
+  governorateId: string,
+  governorateName: string,
+  amount: number,
+): Promise<void> {
+  if (!governorateId || amount <= 0) return;
+  await setDoc(
+    doc(db, 'governorateLeaderboard', governorateId),
+    {
+      id: governorateId,
+      name: governorateName,
+      totalCount: increment(amount),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+}
+
+export async function fetchGovernorateLeaderboard(): Promise<GovernorateRanking[]> {
+  const snap = await getDocs(collection(db, 'governorateLeaderboard'));
+  return snap.docs
+    .map((d) => d.data() as GovernorateRanking)
+    .filter((g) => (g.totalCount ?? 0) > 0)
+    .sort((a, b) => (b.totalCount ?? 0) - (a.totalCount ?? 0));
+}
+
+/* ─── Session-batched governorate counter (localStorage) ── */
+// كل ضغطة تسبيح بتزود الرقم ده محلياً، ولما الجلسة تنتهي
+// (كل 5 دقائق أو إغلاق الصفحة) بنبعت رقم واحد لـ Firestore
+const PENDING_GOV_KEY = 'noor_pending_gov_count';
+
+export function getPendingGovernorateCount(): number {
+  try {
+    return parseInt(localStorage.getItem(PENDING_GOV_KEY) || '0', 10) || 0;
+  } catch { return 0; }
+}
+
+export function addPendingGovernorateCount(n: number): void {
+  try {
+    const current = getPendingGovernorateCount();
+    localStorage.setItem(PENDING_GOV_KEY, String(current + n));
+  } catch { /* ignore */ }
+}
+
+export function clearPendingGovernorateCount(): void {
+  try { localStorage.removeItem(PENDING_GOV_KEY); } catch { /* ignore */ }
 }

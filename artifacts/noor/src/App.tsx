@@ -16,7 +16,7 @@ import { Home } from "@/pages/Home";
 import { Quran } from "@/pages/Quran";
 import { Azkar } from "@/pages/Azkar";
 import { Tasbih } from "@/pages/Tasbih";
-import { GlobalCounter } from "@/pages/GlobalCounter";
+import { Rankings } from "@/pages/Rankings";
 import { MoreMenu } from "@/pages/MoreMenu";
 import { Settings } from "@/pages/Settings";
 import { Asma } from "@/pages/Asma";
@@ -102,8 +102,8 @@ function Router() {
       <Route path="/tasbih">
         <AppShell><Tasbih /></AppShell>
       </Route>
-      <Route path="/counter">
-        <AppShell><GlobalCounter /></AppShell>
+      <Route path="/ranking">
+        <AppShell><Rankings /></AppShell>
       </Route>
       <Route path="/more">
         <AppShell><MoreMenu /></AppShell>
@@ -212,13 +212,6 @@ function App() {
       }
     });
     return () => unsub();
-  }, []);
-
-  // listen for logout events from MoreMenu
-  useEffect(() => {
-    const handleLogout = () => setIsLoggedIn(false);
-    window.addEventListener('app-logout', handleLogout);
-    return () => window.removeEventListener('app-logout', handleLogout);
   }, []);
 
   return (
