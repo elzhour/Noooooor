@@ -4,12 +4,9 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  onSnapshot,
-  collection,
   getDocs,
-  increment,
+  collection,
   serverTimestamp,
-  Timestamp,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -42,101 +39,160 @@ export interface SohbaUserData {
   earnedBadges: string[];
 }
 
-/* ─── Global Counter ─────────────────────────────────────── */
-const COUNTER_DOC = doc(db, 'globalCounter', 'main');
+/* ─── Global Counter & Active Sessions (API server, not Firebase) ─────
+ *
+ * تم نقل العداد العالمي وحساب "الذاكرين الآن" من Firebase إلى السيرفر
+ * المحلي (PostgreSQL + Server-Sent Events) لتقليل استهلاك Firebase
+ * بشكل كبير وزيادة طاقة الاستيعاب على الخطة المجانية.
+ *
+ *   POST /api/counter/increment  →  زيادة العداد (مجمّعة على client + server)
+ *   GET  /api/counter/stream     →  بث مباشر بـ SSE للعداد + عدد الذاكرين الآن
+ *
+ * الذاكرون الآن = عدد التابات المفتوحة على SSE في هذه اللحظة (مُعرَّف بـ sid فريد).
+ * التطبيق بيفتح SSE تلقائيًا أول مرة يتم فيها استخدام أي function من دول.
+ * ──────────────────────────────────────────────────────────── */
 
-export async function initCounter(): Promise<number> {
-  const snap = await getDoc(COUNTER_DOC);
-  if (!snap.exists()) {
-    await setDoc(COUNTER_DOC, { totalCount: 0, updatedAt: serverTimestamp() });
-    return 0;
-  }
-  return (snap.data().totalCount as number) || 0;
-}
-
-export async function incrementGlobalCounter(amount = 1): Promise<void> {
-  // setDoc مع merge:true + increment() آمن تماماً:
-  // - لو الـ doc مش موجود: يعمله بـ totalCount = amount
-  // - لو موجود: يزيد totalCount بـ amount بشكل atomic
-  await setDoc(
-    COUNTER_DOC,
-    { totalCount: increment(amount), updatedAt: serverTimestamp() },
-    { merge: true },
-  );
-}
-
-export function subscribeToGlobalCounter(
-  callback: (data: { count: number }) => void,
-): Unsubscribe {
-  return onSnapshot(COUNTER_DOC, (snap) => {
-    if (snap.exists()) {
-      callback({ count: (snap.data().totalCount as number) || 0 });
-    } else {
-      callback({ count: 0 });
-    }
-  });
-}
-
-/* ─── Active Dhikr Sessions ─────────────────────────────── */
-// عدد الذاكرين الآن = من ضغطوا زرار التسبيح في آخر 3 دقائق
-const SESSIONS_COL = collection(db, 'activeSessions');
-const SESSION_TTL_MS = 3 * 60 * 1000; // 3 دقائق
+let _eventSource: EventSource | null = null;
+const _counterCallbacks = new Set<(d: { count: number }) => void>();
+const _sessionCallbacks = new Set<(n: number) => void>();
+let _lastCount = 0;
+let _lastActive = 0;
+let _sid: string | null = null;
+let _streamRefs = 0;
 
 function getOrCreateSessionId(): string {
+  if (_sid) return _sid;
   let sid = sessionStorage.getItem('noor_sid');
   if (!sid) {
     sid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     sessionStorage.setItem('noor_sid', sid);
   }
+  _sid = sid;
   return sid;
 }
 
-export async function recordTasbeehPress(): Promise<void> {
-  // يُستدعى من صفحة التسبيح عند كل ضغطة
-  // يسجّل/يجدد جلسة المستخدم في Firebase لحساب عدد الذاكرين الآن
+function ensureStream(): void {
+  if (_eventSource) return;
+  if (typeof window === 'undefined') return;
+  const sid = getOrCreateSessionId();
   try {
-    const sid = getOrCreateSessionId();
-    await setDoc(
-      doc(db, 'activeSessions', sid),
-      { lastSeen: serverTimestamp() },
-      { merge: true },
-    );
-  } catch { /* ignore */ }
-}
-
-export async function registerSession(sid: string): Promise<void> {
-  await setDoc(doc(db, 'activeSessions', sid), {
-    lastSeen: serverTimestamp(),
-  });
-}
-
-export async function refreshSession(sid: string): Promise<void> {
-  try {
-    await updateDoc(doc(db, 'activeSessions', sid), {
-      lastSeen: serverTimestamp(),
-    });
+    _eventSource = new EventSource(`/api/counter/stream?sid=${encodeURIComponent(sid)}`);
+    _eventSource.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as { count?: number; activeUsers?: number };
+        if (typeof data.count === 'number') {
+          _lastCount = data.count;
+          _counterCallbacks.forEach((cb) => cb({ count: _lastCount }));
+        }
+        if (typeof data.activeUsers === 'number') {
+          _lastActive = data.activeUsers;
+          _sessionCallbacks.forEach((cb) => cb(_lastActive));
+        }
+      } catch { /* ignore malformed payloads */ }
+    };
+    _eventSource.onerror = () => {
+      // EventSource auto-reconnects on transient errors
+    };
   } catch {
-    await registerSession(sid);
+    _eventSource = null;
   }
 }
 
-export async function unregisterSession(sid: string): Promise<void> {
+function maybeCloseStream(): void {
+  if (_streamRefs > 0) return;
+  if (_counterCallbacks.size === 0 && _sessionCallbacks.size === 0) {
+    _eventSource?.close();
+    _eventSource = null;
+  }
+}
+
+export async function initCounter(): Promise<number> {
   try {
-    await deleteDoc(doc(db, 'activeSessions', sid));
-  } catch { /* ignore */ }
+    const res = await fetch('/api/counter');
+    const data = await res.json() as { count?: number };
+    return data.count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/* ─── Increment (client-side batching to reduce HTTP requests) ─── */
+let _pendingIncrements = 0;
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_INTERVAL_MS = 2000;
+
+async function flushIncrements(): Promise<void> {
+  if (_flushTimer !== null) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
+  const amount = _pendingIncrements;
+  if (amount === 0) return;
+  _pendingIncrements = 0;
+  try {
+    await fetch('/api/counter/increment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount }),
+    });
+  } catch {
+    // failed – return increments to the queue for the next attempt
+    _pendingIncrements += amount;
+  }
+}
+
+export async function incrementGlobalCounter(amount = 1): Promise<void> {
+  // فتح SSE أيضًا حتى يُحسب المستخدم ضمن "الذاكرين الآن"
+  // (الـ stream بيتقفل تلقائيًا لو مفيش subscriber)
+  if (!_eventSource) {
+    _streamRefs++;
+    ensureStream();
+  }
+  _pendingIncrements += amount;
+  if (_flushTimer === null) {
+    _flushTimer = setTimeout(flushIncrements, FLUSH_INTERVAL_MS);
+  }
+}
+
+export function subscribeToGlobalCounter(
+  callback: (data: { count: number }) => void,
+): Unsubscribe {
+  ensureStream();
+  _counterCallbacks.add(callback);
+  if (_lastCount > 0) callback({ count: _lastCount });
+  return () => {
+    _counterCallbacks.delete(callback);
+    maybeCloseStream();
+  };
 }
 
 export function subscribeToActiveSessions(
   callback: (count: number) => void,
 ): Unsubscribe {
-  return onSnapshot(SESSIONS_COL, (snap) => {
-    const cutoff = Date.now() - SESSION_TTL_MS;
-    let count = 0;
-    snap.forEach((d) => {
-      const ts = d.data().lastSeen as Timestamp | null;
-      if (ts && ts.toMillis() > cutoff) count++;
-    });
-    callback(count);
+  ensureStream();
+  _sessionCallbacks.add(callback);
+  if (_lastActive > 0) callback(_lastActive);
+  return () => {
+    _sessionCallbacks.delete(callback);
+    maybeCloseStream();
+  };
+}
+
+/* لم يعد يقوم بأي شيء — السيرفر يحسب الذاكرين الآن من اتصالات SSE المفتوحة.
+ * الإبقاء عليه كـ no-op للحفاظ على توافق الـ API مع المستدعين الحاليين. */
+export async function recordTasbeehPress(): Promise<void> {
+  // no-op
+}
+
+/* Flush أي عمليات معلقة عند إخفاء/إغلاق الصفحة */
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      void flushIncrements();
+    }
+  });
+  window.addEventListener('beforeunload', () => {
+    void flushIncrements();
   });
 }
 
