@@ -116,39 +116,78 @@ export async function initCounter(): Promise<number> {
   }
 }
 
-/* ─── Increment (client-side batching to reduce HTTP requests) ─── */
-let _pendingIncrements = 0;
-let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+/* ─── Increment (offline-safe batching) ──────────────────────
+ * - يجمّع الزيادات في الذاكرة + localStorage حتى لا تضيع عند الإغلاق/الـ refresh
+ * - يحاول الإرسال كل 2 ثانية، ولو فشل يرجّع الأرقام للقائمة
+ * - يعيد المحاولة تلقائيًا عند عودة الإنترنت (online event)
+ * ──────────────────────────────────────────────────────────── */
+const PENDING_KEY = 'noor_pending_increments';
 const FLUSH_INTERVAL_MS = 2000;
+const RETRY_INTERVAL_MS = 5000;
+
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+let _retryTimer: ReturnType<typeof setTimeout> | null = null;
+let _isFlushing = false;
+
+function readPending(): number {
+  if (typeof localStorage === 'undefined') return 0;
+  const raw = localStorage.getItem(PENDING_KEY);
+  const n = raw ? parseInt(raw, 10) : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function writePending(n: number): void {
+  if (typeof localStorage === 'undefined') return;
+  if (n <= 0) localStorage.removeItem(PENDING_KEY);
+  else localStorage.setItem(PENDING_KEY, String(n));
+}
+
+function addPending(amount: number): void {
+  writePending(readPending() + amount);
+}
+
+function scheduleRetry(): void {
+  if (_retryTimer !== null) return;
+  _retryTimer = setTimeout(() => {
+    _retryTimer = null;
+    void flushIncrements();
+  }, RETRY_INTERVAL_MS);
+}
 
 async function flushIncrements(): Promise<void> {
   if (_flushTimer !== null) {
     clearTimeout(_flushTimer);
     _flushTimer = null;
   }
-  const amount = _pendingIncrements;
+  if (_isFlushing) return;
+  const amount = readPending();
   if (amount === 0) return;
-  _pendingIncrements = 0;
+  _isFlushing = true;
+  // تصفير محلي مع نية الاسترجاع لو فشل الإرسال
+  writePending(0);
   try {
-    await fetch('/api/counter/increment', {
+    const res = await fetch('/api/counter/increment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount }),
     });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
   } catch {
-    // failed – return increments to the queue for the next attempt
-    _pendingIncrements += amount;
+    // فشل الإرسال — نرجّع الأرقام للقائمة ونعيد المحاولة بعد 5 ثوانٍ
+    addPending(amount);
+    scheduleRetry();
+  } finally {
+    _isFlushing = false;
   }
 }
 
 export async function incrementGlobalCounter(amount = 1): Promise<void> {
   // فتح SSE أيضًا حتى يُحسب المستخدم ضمن "الذاكرين الآن"
-  // (الـ stream بيتقفل تلقائيًا لو مفيش subscriber)
   if (!_eventSource) {
     _streamRefs++;
     ensureStream();
   }
-  _pendingIncrements += amount;
+  addPending(amount);
   if (_flushTimer === null) {
     _flushTimer = setTimeout(flushIncrements, FLUSH_INTERVAL_MS);
   }
@@ -184,16 +223,38 @@ export async function recordTasbeehPress(): Promise<void> {
   // no-op
 }
 
-/* Flush أي عمليات معلقة عند إخفاء/إغلاق الصفحة */
-if (typeof document !== 'undefined') {
+/* مزامنة الزيادات المعلقة مع المتصفح/الشبكة */
+if (typeof window !== 'undefined') {
+  // 1) عند إخفاء/إغلاق الصفحة: حاول إرسال المتبقي فورًا
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {
       void flushIncrements();
     }
   });
+
+  // 2) عند الإغلاق النهائي: استخدم sendBeacon لضمان الإرسال حتى لو الصفحة بتقفل
   window.addEventListener('beforeunload', () => {
+    const amount = readPending();
+    if (amount > 0 && navigator.sendBeacon) {
+      const sent = navigator.sendBeacon(
+        '/api/counter/increment',
+        new Blob([JSON.stringify({ amount })], { type: 'application/json' }),
+      );
+      if (sent) writePending(0);
+    } else {
+      void flushIncrements();
+    }
+  });
+
+  // 3) عند عودة الإنترنت: ابعت المتبقي فورًا
+  window.addEventListener('online', () => {
     void flushIncrements();
   });
+
+  // 4) عند فتح الصفحة (تحميل أو refresh): لو فيه أرقام متبقية من جلسة سابقة، ابعتها
+  if (readPending() > 0) {
+    setTimeout(() => { void flushIncrements(); }, 1000);
+  }
 }
 
 /* ─── Sohba / Leaderboard ───────────────────────────────── */
