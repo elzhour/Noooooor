@@ -7,6 +7,8 @@ import {
   fetchLeaderboard,
   fetchGovernorateLeaderboard,
   incrementGovernorateCounter,
+  rebuildGovernorateLeaderboard,
+  getRebuildIncludedUsers,
   type LeaderboardEntry,
   type GovernorateRanking,
 } from '@/lib/firestore';
@@ -138,11 +140,21 @@ function UsersLeaderboardTab({ isDark }: { isDark: boolean }) {
             const govSyncedCount = getGovSyncedCount();
             const delta = totalTasbeeh - govSyncedCount;
             if (delta > 0) {
-              await incrementGovernorateCounter(
-                userProfile.governorateId,
-                userProfile.governorateName,
-                delta,
-              );
+              // لو أول مرة يزامن، تحقق ما كانش اتحسب في آخر rebuild عشان نمنع التكرار
+              let shouldIncrement = true;
+              if (govSyncedCount === 0) {
+                const includedUsers = await getRebuildIncludedUsers();
+                if (includedUsers.includes(stableUid as string)) {
+                  shouldIncrement = false;
+                }
+              }
+              if (shouldIncrement) {
+                await incrementGovernorateCounter(
+                  userProfile.governorateId,
+                  userProfile.governorateName,
+                  delta,
+                );
+              }
               queueGovSyncedCountUpdate(stableUid as string, totalTasbeeh);
             }
           }
@@ -352,6 +364,8 @@ function GovernoratesLeaderboardTab({ isDark }: { isDark: boolean }) {
   const [entries, setEntries] = useState<GovernorateRanking[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<{ governoratesUpdated: number; totalTasbeeh: number } | null>(null);
 
   const gold = isDark ? '#E8C98A' : '#7A4F1E';
   const cardBg = isDark ? 'rgba(193,154,107,0.06)' : 'rgba(193,154,107,0.08)';
@@ -373,6 +387,23 @@ function GovernoratesLeaderboardTab({ isDark }: { isDark: boolean }) {
       setLoading(false);
     }
   }, []);
+
+  const handleRebuild = async () => {
+    setRebuilding(true);
+    setRebuildResult(null);
+    try {
+      const result = await rebuildGovernorateLeaderboard(
+        EGYPT_GOVERNORATES.map((g) => ({ id: g.id, name: g.name })),
+      );
+      setRebuildResult(result);
+      await loadGovernorates();
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code ?? '';
+      setFetchError(code === 'permission-denied' ? 'permission-denied' : 'network');
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   useEffect(() => { loadGovernorates(); }, [loadGovernorates]);
 
@@ -414,6 +445,54 @@ function GovernoratesLeaderboardTab({ isDark }: { isDark: boolean }) {
           </button>
         </div>
       )}
+
+      {/* زر إعادة حساب كل البيانات القديمة */}
+      <AnimatePresence>
+        {rebuildResult ? (
+          <motion.div
+            key="rebuild-result"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="rounded-xl px-4 py-3 flex items-center justify-between gap-2"
+            style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.25)' }}
+          >
+            <div>
+              <p className="text-xs font-bold" style={{ color: '#4ade80', fontFamily: '"Tajawal", sans-serif' }}>
+                تم إعادة الحساب بنجاح ✓
+              </p>
+              <p className="text-[11px] mt-0.5" style={{ color: '#4ade80', fontFamily: '"Tajawal", sans-serif', opacity: 0.75 }}>
+                {rebuildResult.governoratesUpdated} محافظة — {rebuildResult.totalTasbeeh.toLocaleString('ar-EG')} تسبيحة
+              </p>
+            </div>
+            <button
+              onClick={() => setRebuildResult(null)}
+              className="text-xs"
+              style={{ color: '#4ade80', opacity: 0.6, fontFamily: '"Tajawal", sans-serif' }}
+            >
+              ✕
+            </button>
+          </motion.div>
+        ) : (
+          <motion.button
+            key="rebuild-btn"
+            onClick={handleRebuild}
+            disabled={rebuilding}
+            className="w-full py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+            style={{
+              background: isDark ? 'rgba(193,154,107,0.08)' : 'rgba(193,154,107,0.06)',
+              border: `1px dashed rgba(193,154,107,${isDark ? '0.35' : '0.4'})`,
+              opacity: rebuilding ? 0.6 : 1,
+            }}
+            data-testid="button-rebuild-governorates"
+          >
+            <RefreshCw size={13} className={rebuilding ? 'animate-spin' : ''} style={{ color: '#C19A6B' }} />
+            <span className="text-xs font-bold" style={{ color: '#C19A6B', fontFamily: '"Tajawal", sans-serif' }}>
+              {rebuilding ? 'جاري إعادة حساب كل البيانات...' : 'إعادة حساب كل البيانات القديمة'}
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
       {fetchError === 'permission-denied' && (
         <div

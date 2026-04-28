@@ -114,6 +114,69 @@ export async function fetchGovernorateLeaderboard(): Promise<GovernorateRanking[
     .sort((a, b) => (b.totalCount ?? 0) - (a.totalCount ?? 0));
 }
 
+/* ─── Rebuild governorate leaderboard from scratch ──────── */
+
+/**
+ * يقرأ كل إدخالات sohbaLeaderboard ويعيد بناء governorateLeaderboard من الصفر.
+ * يحفظ قائمة المستخدمين المُدرَجين عشان نمنع الازدواجية في الحسابات اللاحقة.
+ */
+export async function rebuildGovernorateLeaderboard(
+  governorates: Array<{ id: string; name: string }>,
+): Promise<{ governoratesUpdated: number; totalTasbeeh: number }> {
+  // 1. اقرأ كل بيانات الترتيب
+  const snap = await getDocs(collection(db, 'sohbaLeaderboard'));
+  const entries = snap.docs.map((d) => ({
+    userId: d.id,
+    ...(d.data() as { governorate?: string | null; tasbeehCount?: number }),
+  }));
+
+  // 2. اجمع التسبيح لكل محافظة حسب الاسم
+  const totalsByName: Record<string, number> = {};
+  const includedUserIds: string[] = [];
+  for (const entry of entries) {
+    const count = entry.tasbeehCount ?? 0;
+    if (entry.governorate && count > 0) {
+      totalsByName[entry.governorate] = (totalsByName[entry.governorate] ?? 0) + count;
+      includedUserIds.push(entry.userId);
+    }
+  }
+
+  // 3. اكتب كل محافظة فيها تسبيح في Firestore
+  let governoratesUpdated = 0;
+  let totalTasbeeh = 0;
+  for (const gov of governorates) {
+    const govTotal = totalsByName[gov.name] ?? 0;
+    if (govTotal > 0) {
+      await setDoc(
+        doc(db, 'governorateLeaderboard', gov.id),
+        { id: gov.id, name: gov.name, totalCount: govTotal, updatedAt: serverTimestamp() },
+      );
+      governoratesUpdated++;
+      totalTasbeeh += govTotal;
+    }
+  }
+
+  // 4. احفظ metadata الإعادة عشان نمنع الازدواجية للمستخدمين اللي اتحسبوا
+  await setDoc(doc(db, 'meta', 'lastRebuild'), {
+    timestamp: serverTimestamp(),
+    includedUserIds,
+  });
+
+  return { governoratesUpdated, totalTasbeeh };
+}
+
+/**
+ * رجّع قائمة userIds اللي اتحسبوا في آخر إعادة بناء.
+ * بنستخدمها عشان نمنع إضافة نفس التسبيح مرتين.
+ */
+export async function getRebuildIncludedUsers(): Promise<string[]> {
+  try {
+    const snap = await getDoc(doc(db, 'meta', 'lastRebuild'));
+    if (!snap.exists()) return [];
+    return (snap.data().includedUserIds ?? []) as string[];
+  } catch { return []; }
+}
+
 /* ─── Session-batched governorate counter (localStorage) ── */
 // كل ضغطة تسبيح بتزود الرقم ده محلياً، ولما الجلسة تنتهي
 // (كل 5 دقائق أو إغلاق الصفحة) بنبعت رقم واحد لـ Firestore

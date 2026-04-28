@@ -2,6 +2,7 @@ import { TASBIH_TYPES } from '@/lib/constants';
 import {
   syncUserLeaderboard,
   incrementGovernorateCounter,
+  getRebuildIncludedUsers,
   addPendingGovernorateCount,
   getPendingGovernorateCount,
   clearPendingGovernorateCount,
@@ -66,12 +67,24 @@ async function flushSessionToFirestore(
     });
 
     if (delta > 0 && profile.governorateId && profile.governorateName) {
-      await incrementGovernorateCounter(
-        profile.governorateId,
-        profile.governorateName,
-        delta,
-      );
-      // احفظ الرقم الجديد عشان نحسب الفرق صح المرة الجاية
+      // لو المستخدم عنده gov_synced_count = 0، ممكن بياناته اتحسبت بالفعل في آخر rebuild
+      // نتحقق عشان نمنع الازدواجية
+      let shouldIncrement = true;
+      if (govSyncedCount === 0) {
+        const includedUsers = await getRebuildIncludedUsers();
+        if (includedUsers.includes(uid)) {
+          // بياناته اتحسبت في الـ rebuild — نحدّث الرقم بس من غير إضافة
+          shouldIncrement = false;
+        }
+      }
+      if (shouldIncrement) {
+        await incrementGovernorateCounter(
+          profile.governorateId,
+          profile.governorateName,
+          delta,
+        );
+      }
+      // في كل الأحوال احفظ الرقم الجديد عشان نحسب الفرق صح المرة الجاية
       queueGovSyncedCountUpdate(uid, totalTasbeeh);
     }
   } catch {
