@@ -6,6 +6,9 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  query,
+  orderBy,
+  limit,
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -62,11 +65,16 @@ export async function syncUserLeaderboard(data: SohbaUserData): Promise<number> 
 }
 
 export async function fetchLeaderboard(): Promise<LeaderboardEntry[]> {
-  const snap = await getDocs(collection(db, 'sohbaLeaderboard'));
-  const all = snap.docs.map((d) => d.data() as LeaderboardEntry);
-  return all
+  // نقرأ أعلى 100 بس بدل ما نقرأ كل الـ collection — يوفر reads بشكل كبير
+  const q = query(
+    collection(db, 'sohbaLeaderboard'),
+    orderBy('tasbeehCount', 'desc'),
+    limit(100),
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .map((d) => d.data() as LeaderboardEntry)
     .filter((e) => e.isPublic === true)
-    .sort((a, b) => (b.tasbeehCount ?? 0) - (a.tasbeehCount ?? 0))
     .slice(0, 50);
 }
 
