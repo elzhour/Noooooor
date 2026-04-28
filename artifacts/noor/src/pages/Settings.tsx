@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { Link } from 'wouter';
-import { ChevronLeft, Image, Upload, X, Type, Layers } from 'lucide-react';
+import { ChevronLeft, Image, Upload, X, Type, Layers, Bell, ChevronLeft as ChevronLeftSmall } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAppSettings, PRESET_BACKGROUNDS } from '@/contexts/AppSettingsContext';
 import { useUserSetting } from '@/hooks/use-user-setting';
@@ -66,6 +66,33 @@ export function Settings() {
       </div>
 
       <div className="px-4 pt-5 space-y-5 max-w-lg mx-auto">
+
+        {/* ── Notifications Section ── */}
+        <Link href="/notifications">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-2xl p-4 flex items-center gap-3 cursor-pointer active:scale-[0.99]"
+            style={{ background: sectionBg, border: `1px solid ${borderColor}` }}
+            data-testid="link-notification-settings"
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#C19A6B,#8B6340)' }}
+            >
+              <Bell className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1 text-right">
+              <div className="text-base font-bold" style={{ fontFamily: '"Tajawal", sans-serif', color: textColor }}>
+                إشعارات الصلاة
+              </div>
+              <div className="text-xs" style={{ fontFamily: '"Tajawal", sans-serif', color: subText }}>
+                صامت / نص / أذان لكل صلاة، يُجدول لشهر كامل
+              </div>
+            </div>
+            <ChevronLeftSmall className="w-5 h-5" style={{ color: subText }} />
+          </motion.div>
+        </Link>
 
         {/* ── Font Size Section ── */}
         <motion.div

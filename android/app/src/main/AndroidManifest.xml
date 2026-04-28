@@ -15,6 +15,8 @@
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:exported="true">
 
             <intent-filter>
@@ -23,6 +25,8 @@
             </intent-filter>
 
         </activity>
+
+        <!-- LocalNotifications receiver / actions (Capacitor plugin handles via manifest merge) -->
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -35,7 +39,24 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
+    <!-- Core -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Notifications & alarms — required so prayer notifications fire while
+         the app is closed and the device is in Doze mode. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Full-screen athan popup over lock screen -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Foreground service kept open while athan is playing (Android 14+) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
 </manifest>

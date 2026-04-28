@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Notification status-bar icon. Android requires it to be a white silhouette
+  on a transparent background; the system will tint it for you.
+  This is a stylised crescent + book (matching the Noor brand mark).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+
+    <!-- Outer dome arch -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,2 C7.58,2 4,5.58 4,10 L4,12 L20,12 L20,10 C20,5.58 16.42,2 12,2 Z" />
+
+    <!-- Crescent on top -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M12,1 L12.4,2.2 L13.6,2.2 L12.6,2.95 L13,4.15 L12,3.4 L11,4.15 L11.4,2.95 L10.4,2.2 L11.6,2.2 Z" />
+
+    <!-- Open book base -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3,13 L11,13 L11,21 C9.5,20.2 7.5,19.7 3,19.7 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M21,13 L13,13 L13,21 C14.5,20.2 16.5,19.7 21,19.7 Z" />
+</vector>

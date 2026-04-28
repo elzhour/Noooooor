@@ -11,8 +11,12 @@
   },
   "dependencies": {
     "@capacitor/android": "^5.7.8",
+    "@capacitor/app": "^5.0.8",
     "@capacitor/cli": "^5.7.8",
     "@capacitor/core": "^5.7.8",
+    "@capacitor/haptics": "^5.0.8",
+    "@capacitor/local-notifications": "^5.0.8",
+    "@capacitor/preferences": "^5.0.8",
     "firebase": "^12.11.0",
     "hls.js": "^1.6.15",
     "leaflet": "^1.9.4",

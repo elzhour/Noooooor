@@ -34,11 +34,19 @@ import { Sunnah } from "@/pages/Sunnah";
 import { IslamicTV } from "@/pages/IslamicTV";
 import { VoiceComparison } from "@/pages/VoiceComparison";
 import { HifzTest } from "@/pages/HifzTest";
+import { NotificationSettings } from "@/pages/NotificationSettings";
 
 import { onAuthStateChanged } from "firebase/auth";
 import { get, ref } from "firebase/database";
 import { auth, rtdb } from "@/lib/firebase";
-import { initUserSync, clearSyncState, getSettingCache } from "@/lib/rtdb";
+import { initUserSync, clearSyncState, getSettingCache, getCacheValue } from "@/lib/rtdb";
+import type { UserProfile } from "@/lib/rtdb";
+import { AthanPopup } from "@/components/AthanPopup";
+import {
+  scheduleMonthOfPrayers,
+  startForegroundWatcher,
+  ensurePermission,
+} from "@/lib/notifications/scheduler";
 
 const queryClient = new QueryClient();
 
@@ -156,9 +164,42 @@ function Router() {
       <Route path="/hifz-test">
         <FullScreenShell><HifzTest /></FullScreenShell>
       </Route>
+      <Route path="/notifications">
+        <FullScreenShell><NotificationSettings /></FullScreenShell>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
+}
+
+function PrayerNotificationsBootstrap() {
+  // After login, ensure permission, kick off scheduling for the next 30 days,
+  // and start the in-app foreground watcher (so the popup fires while the app
+  // is open even on the web).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensurePermission();
+        startForegroundWatcher();
+        const profile = getCacheValue<UserProfile | null>("profile", null);
+        if (cancelled) return;
+        if (profile?.lat != null && profile?.lng != null) {
+          await scheduleMonthOfPrayers({
+            lat: profile.lat,
+            lng: profile.lng,
+            days: 30,
+          });
+        }
+      } catch (e) {
+        console.warn("[notif] bootstrap failed", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return null;
 }
 
 function AppContent() {
@@ -166,6 +207,8 @@ function AppContent() {
     <>
       <GlobalBackground />
       <Router />
+      <PrayerNotificationsBootstrap />
+      <AthanPopup />
     </>
   );
 }
