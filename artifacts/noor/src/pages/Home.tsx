@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { MapPin, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { usePrayerTimes } from '@/hooks/use-api';
 import { HomeTracker } from '@/components/HomeTracker';
 import { getProfileCache } from '@/lib/rtdb';
+import { SkyScene } from '@/components/SkyScene';
 
 const PRAYERS = [
   { id: 'Fajr',    name: 'الفجر'  },
@@ -146,64 +147,29 @@ export function Home() {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   }).format(displayDate);
 
+  const hijriDayNum = hijri?.day ? parseInt(String(hijri.day), 10) : 1;
+
   return (
-    <div className="pb-24 pt-6 px-4 max-w-lg mx-auto space-y-5" dir="rtl">
-      {/* Header Banner */}
-      <div className="bg-gradient-to-br from-primary to-primary/80 rounded-3xl p-5 text-primary-foreground shadow-lg shadow-primary/20 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-12 -mt-12" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -ml-8 -mb-8" />
-
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="flex items-center gap-3 mb-0.5">
-            <button onClick={() => setDateOffset(d => d - 1)} className="p-1.5 bg-white/15 rounded-full hover:bg-white/25 transition-colors">
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <p className="text-primary-foreground/90 font-bold text-sm" style={{ fontFamily: '"Tajawal", sans-serif' }}>{displayHijriLabel}</p>
-            <button onClick={() => setDateOffset(d => d + 1)} className="p-1.5 bg-white/15 rounded-full hover:bg-white/25 transition-colors">
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          </div>
-          <p className="text-primary-foreground/55 text-xs mb-1" style={{ fontFamily: '"Tajawal", sans-serif' }}>
-            {displayGregorianLabel}
-          </p>
-          {dateOffset !== 0 && (
-            <button onClick={() => setDateOffset(0)} className="text-xs text-white/60 underline mb-1" style={{ fontFamily: '"Tajawal", sans-serif' }}>
-              {dateOffset > 0 ? `+${dateOffset} أيام` : `${dateOffset} أيام`} — العودة لليوم
-            </button>
-          )}
-
-          <h1 className="text-3xl mb-3" style={{ fontFamily: '"Amiri", "Scheherazade New", serif' }}>تطبيق نُـور</h1>
-
-          {dateOffset === 0 && nextPrayer ? (
-            <div className="bg-black/20 backdrop-blur-md rounded-2xl p-4 w-full border border-white/10">
-              <p className="text-xs text-primary-foreground/60 mb-1 tracking-widest" style={{ fontFamily: '"Tajawal", sans-serif' }}>الصلاة القادمة</p>
-              <p className="text-2xl font-bold mb-2" style={{ fontFamily: '"Amiri", serif', textShadow: '0 1px 8px rgba(0,0,0,0.3)' }}>{nextPrayer.name}</p>
-              <div className="flex items-center justify-center gap-1 mb-1" style={{ direction: 'ltr' }}>
-                {(countdown || '00:00:00').split(':').map((seg, i, arr) => (
-                  <div key={i} className="flex items-center gap-1">
-                    <div className="bg-black/30 rounded-xl px-3 py-1.5 min-w-[52px] text-center">
-                      <span className="text-3xl font-bold tracking-tight text-white" style={{ fontFamily: '"Tajawal", monospace', letterSpacing: '-0.02em' }}>{seg}</span>
-                    </div>
-                    {i < arr.length - 1 && <span className="text-white/60 text-2xl font-bold mb-1">:</span>}
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-primary-foreground/60" style={{ fontFamily: '"Tajawal", sans-serif' }}>{fmt12(nextPrayer.time24)}</p>
-            </div>
-          ) : dateOffset !== 0 ? (
-            <div className="bg-black/20 rounded-2xl p-3 w-full border border-white/10">
-              <p className="text-sm font-bold" style={{ fontFamily: '"Tajawal", sans-serif' }}>
-                {dateOffset > 0 ? `مواقيت بعد ${dateOffset} ${dateOffset === 1 ? 'يوم' : 'أيام'}` : `مواقيت قبل ${Math.abs(dateOffset)} ${Math.abs(dateOffset) === 1 ? 'يوم' : 'أيام'}`}
-              </p>
-            </div>
-          ) : (
-            <div className="animate-pulse bg-black/10 rounded-2xl h-28 w-full" />
-          )}
-        </div>
+    <div className="pb-24 pt-4 max-w-xl mx-auto space-y-5" dir="rtl">
+      {/* Sky + Sea Hero Scene */}
+      <div className="px-3">
+        <SkyScene
+          timings={times}
+          hijriLabel={displayHijriLabel}
+          gregorianLabel={displayGregorianLabel}
+          hijriDay={hijriDayNum}
+          dateOffset={dateOffset}
+          onPrev={() => setDateOffset(d => d - 1)}
+          onNext={() => setDateOffset(d => d + 1)}
+          onResetDate={() => setDateOffset(0)}
+          nextPrayerName={dateOffset === 0 && nextPrayer ? nextPrayer.name : undefined}
+          nextPrayerTime={dateOffset === 0 && nextPrayer ? nextPrayer.time24 : undefined}
+          countdown={countdown}
+        />
       </div>
 
       {/* Prayer Times Grid */}
-      <div className="bg-card rounded-3xl p-5 shadow-sm border border-border">
+      <div className="mx-4 bg-card rounded-3xl p-5 shadow-sm border border-border">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-bold text-lg flex items-center gap-2" style={{ fontFamily: '"Tajawal", sans-serif' }}>
             <span className="text-primary">
