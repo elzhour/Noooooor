@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'wouter';
 import { motion } from 'framer-motion';
 import {
@@ -10,7 +10,14 @@ import {
   PlayCircle,
   Loader2,
   Check,
+  AlertCircle,
+  ChevronLeft,
+  Battery,
+  Layers,
+  AlarmClock,
+  Settings as SettingsIcon,
 } from 'lucide-react';
+import { App as CapApp } from '@capacitor/app';
 import {
   loadPrefs,
   setPrayerMode,
@@ -24,8 +31,18 @@ import {
 import {
   scheduleMonthOfPrayers,
   scheduleTestNotification,
-  ensurePermission,
 } from '@/lib/notifications/scheduler';
+import {
+  getPermissionStatus,
+  requestNotificationsPermission,
+  openNotificationSettings,
+  requestIgnoreBattery,
+  openOverlaySettings,
+  openExactAlarmSettings,
+  openAutostartSettings,
+  type PermissionStatus,
+  ALL_GRANTED,
+} from '@/lib/notifications/permissions';
 import { ADHAN_RECITERS } from '@/lib/constants';
 import { getCacheValue } from '@/lib/rtdb';
 import type { UserProfile } from '@/lib/rtdb';
@@ -36,52 +53,100 @@ const MODE_OPTIONS: { value: NotifyMode; label: string; icon: typeof Bell }[] = 
   { value: 'athan', label: 'أذان', icon: Volume2 },
 ];
 
+interface PermRow {
+  key: keyof PermissionStatus | 'autostart';
+  title: string;
+  desc: string;
+  icon: typeof Bell;
+  action: () => Promise<void>;
+  /** Whether we can verify it (autostart can't be verified). */
+  verifiable: boolean;
+}
+
 export function NotificationSettings() {
   const [prefs, setPrefs] = useState(() => loadPrefs());
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [permGranted, setPermGranted] = useState<boolean | null>(null);
+  const [status, setStatus] = useState<{
+    text: string;
+    tone: 'ok' | 'warn' | 'err';
+  } | null>(null);
+  const [perm, setPerm] = useState<PermissionStatus>(ALL_GRANTED);
 
   const profile = useMemo(
     () => getCacheValue<UserProfile | null>('profile', null),
-    []
+    [],
   );
 
-  useEffect(() => {
-    ensurePermission().then(setPermGranted).catch(() => setPermGranted(false));
+  const refreshPerm = useCallback(async () => {
+    try {
+      const p = await getPermissionStatus();
+      setPerm(p);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  const flash = (msg: string) => {
-    setStatus(msg);
-    setTimeout(() => setStatus(null), 2400);
+  useEffect(() => {
+    refreshPerm();
+  }, [refreshPerm]);
+
+  // Re-check permission status whenever the user returns from the system
+  // settings pane (Capacitor `appStateChange`) or the page regains focus.
+  useEffect(() => {
+    const onFocus = () => refreshPerm();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refreshPerm();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+
+    let remove: (() => void) | null = null;
+    CapApp.addListener('appStateChange', (s) => {
+      if (s.isActive) refreshPerm();
+    })
+      .then((h) => {
+        remove = () => h.remove();
+      })
+      .catch(() => {});
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+      if (remove) remove();
+    };
+  }, [refreshPerm]);
+
+  const flash = (text: string, tone: 'ok' | 'warn' | 'err' = 'ok') => {
+    setStatus({ text, tone });
+    setTimeout(() => setStatus(null), 3000);
   };
 
   const handleModeChange = (key: PrayerKey, mode: NotifyMode) => {
-    const updated = setPrayerMode(key, mode);
-    setPrefs(updated);
+    setPrefs(setPrayerMode(key, mode));
   };
 
   const handleReciter = (id: string) => {
-    const updated = setAthanReciter(id);
-    setPrefs(updated);
+    setPrefs(setAthanReciter(id));
   };
 
   const handleToggleEnabled = (v: boolean) => {
-    const updated = setEnabled(v);
-    setPrefs(updated);
+    setPrefs(setEnabled(v));
   };
 
   const handleReschedule = async () => {
     if (!profile?.lat || !profile?.lng) {
-      flash('لم يتم تحديد المحافظة بعد');
+      flash('لم يتم تحديد المحافظة بعد', 'warn');
       return;
     }
     setBusy(true);
     try {
-      const ok = await ensurePermission();
-      setPermGranted(ok);
+      const ok = await requestNotificationsPermission();
+      await refreshPerm();
       if (!ok) {
-        flash('يرجى السماح للتطبيق بإرسال الإشعارات من إعدادات الجهاز');
+        flash(
+          'يرجى السماح للتطبيق بإرسال الإشعارات من إعدادات الجهاز',
+          'warn',
+        );
         return;
       }
       const r = await scheduleMonthOfPrayers({
@@ -89,10 +154,17 @@ export function NotificationSettings() {
         lng: profile.lng,
         days: 30,
       });
-      flash(`تمت جدولة ${r.scheduled || r.events} تنبيه للشهر القادم`);
+      if (r.offline && r.scheduled === 0) {
+        flash('تعذر الجدولة — حاول الاتصال بالإنترنت مرة واحدة', 'err');
+      } else {
+        flash(
+          `تمت جدولة ${r.scheduled || r.events} تنبيه للشهر القادم`,
+          'ok',
+        );
+      }
     } catch (e) {
       console.error(e);
-      flash('تعذر جدولة الإشعارات — تأكد من الاتصال بالإنترنت');
+      flash('تعذر جدولة الإشعارات — تأكد من الاتصال بالإنترنت', 'err');
     } finally {
       setBusy(false);
     }
@@ -102,14 +174,64 @@ export function NotificationSettings() {
     setBusy(true);
     try {
       await scheduleTestNotification('Dhuhr');
-      flash('سيتم إطلاق التجربة بعد ٥ ثوانٍ');
+      flash('سيتم إطلاق التجربة بعد ٥ ثوانٍ', 'ok');
     } catch (e) {
       console.error(e);
-      flash('تعذر إطلاق التجربة');
+      flash('تعذر إطلاق التجربة', 'err');
     } finally {
       setBusy(false);
     }
   };
+
+  const permRows: PermRow[] = [
+    {
+      key: 'notifications',
+      title: 'إذن الإشعارات',
+      desc: 'يسمح للتطبيق بإرسال تنبيهات الصلاة',
+      icon: Bell,
+      verifiable: true,
+      action: async () => {
+        const ok = await requestNotificationsPermission();
+        if (!ok) await openNotificationSettings();
+      },
+    },
+    {
+      key: 'exactAlarm',
+      title: 'تنبيهات في الموعد بالضبط',
+      desc: 'لتشغيل الأذان في وقته الدقيق دون تأخير',
+      icon: AlarmClock,
+      verifiable: true,
+      action: openExactAlarmSettings,
+    },
+    {
+      key: 'batteryOptimization',
+      title: 'استثناء من توفير البطارية',
+      desc: 'لكي تعمل التنبيهات والتطبيق مغلق',
+      icon: Battery,
+      verifiable: true,
+      action: requestIgnoreBattery,
+    },
+    {
+      key: 'overlay',
+      title: 'الظهور فوق التطبيقات الأخرى',
+      desc: 'لإظهار شاشة الأذان كاملة فوق أي تطبيق',
+      icon: Layers,
+      verifiable: true,
+      action: openOverlaySettings,
+    },
+    {
+      key: 'autostart',
+      title: 'التشغيل التلقائي',
+      desc: 'مهم على هواتف Xiaomi و Huawei و Oppo',
+      icon: SettingsIcon,
+      verifiable: false,
+      action: openAutostartSettings,
+    },
+  ];
+
+  const allOk = permRows.every((row) =>
+    row.verifiable ? perm[row.key as keyof PermissionStatus] : true,
+  );
 
   return (
     <div className="min-h-[100dvh] pb-24 px-4 pt-6" dir="rtl">
@@ -158,6 +280,104 @@ export function NotificationSettings() {
         </div>
       )}
 
+      {/* permissions wizard */}
+      <div
+        className="rounded-2xl p-4 mb-4"
+        style={{
+          background: allOk
+            ? 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(193,154,107,0.04))'
+            : 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(193,154,107,0.04))',
+          border: `1px solid ${allOk ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.3)'}`,
+        }}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="text-base font-bold"
+            style={{ fontFamily: '"Tajawal", sans-serif', color: '#C19A6B' }}
+          >
+            إعدادات النظام
+          </div>
+          <div
+            className="text-xs px-2 py-1 rounded-full"
+            style={{
+              background: allOk ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
+              color: allOk ? '#86efac' : '#fca5a5',
+              fontFamily: '"Tajawal", sans-serif',
+            }}
+            data-testid="text-perm-status"
+          >
+            {allOk ? 'جاهز' : 'يحتاج إعداد'}
+          </div>
+        </div>
+        <div className="space-y-2">
+          {permRows.map((row) => {
+            const Icon = row.icon;
+            const ok = row.verifiable
+              ? perm[row.key as keyof PermissionStatus]
+              : null;
+            return (
+              <button
+                key={row.key}
+                onClick={async () => {
+                  await row.action();
+                  setTimeout(refreshPerm, 600);
+                }}
+                data-testid={`button-perm-${row.key}`}
+                className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all active:scale-[0.98]"
+                style={{
+                  background: 'rgba(255,255,255,0.03)',
+                  border:
+                    ok === false
+                      ? '1.5px solid rgba(239,68,68,0.35)'
+                      : '1px solid rgba(193,154,107,0.18)',
+                }}
+              >
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background:
+                      ok === true
+                        ? 'rgba(34,197,94,0.18)'
+                        : ok === false
+                          ? 'rgba(239,68,68,0.18)'
+                          : 'rgba(193,154,107,0.15)',
+                  }}
+                >
+                  {ok === true ? (
+                    <Check className="w-4 h-4 text-green-400" />
+                  ) : ok === false ? (
+                    <AlertCircle className="w-4 h-4 text-red-400" />
+                  ) : (
+                    <Icon className="w-4 h-4 text-[#C19A6B]" />
+                  )}
+                </div>
+                <div className="flex-1 text-right min-w-0">
+                  <div
+                    className="text-sm font-bold"
+                    style={{
+                      fontFamily: '"Tajawal", sans-serif',
+                      color: ok === true ? '#86efac' : '#C19A6B',
+                    }}
+                  >
+                    {row.title}
+                  </div>
+                  <div
+                    className="text-xs opacity-75 truncate"
+                    style={{
+                      fontFamily: '"Tajawal", sans-serif',
+                      color: '#C19A6B',
+                    }}
+                  >
+                    {row.desc}
+                  </div>
+                </div>
+                <ChevronLeft className="w-4 h-4 text-[#C19A6B] opacity-60 flex-shrink-0" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* master switch */}
       <div
         className="rounded-2xl p-4 mb-4 flex items-center justify-between"
@@ -184,7 +404,9 @@ export function NotificationSettings() {
           onClick={() => handleToggleEnabled(!prefs.enabled)}
           data-testid="switch-enabled"
           className="relative w-14 h-8 rounded-full transition-colors"
-          style={{ background: prefs.enabled ? '#C19A6B' : 'rgba(193,154,107,0.25)' }}
+          style={{
+            background: prefs.enabled ? '#C19A6B' : 'rgba(193,154,107,0.25)',
+          }}
           aria-label="تفعيل التنبيهات"
         >
           <motion.div
@@ -196,7 +418,7 @@ export function NotificationSettings() {
 
       {/* per-prayer mode picker */}
       <div className="space-y-3 mb-4">
-        {PRAYER_KEYS.map(key => {
+        {PRAYER_KEYS.map((key) => {
           const current = prefs.modes[key];
           return (
             <div
@@ -216,7 +438,7 @@ export function NotificationSettings() {
                 {PRAYER_NAMES_AR[key]}
               </div>
               <div className="grid grid-cols-3 gap-2">
-                {MODE_OPTIONS.map(opt => {
+                {MODE_OPTIONS.map((opt) => {
                   const Icon = opt.icon;
                   const active = current === opt.value;
                   return (
@@ -276,7 +498,7 @@ export function NotificationSettings() {
           className="space-y-2 overflow-y-auto pr-1"
           style={{ maxHeight: '40vh' }}
         >
-          {ADHAN_RECITERS.map(r => {
+          {ADHAN_RECITERS.map((r) => {
             const active = prefs.athanReciterId === r.id;
             return (
               <button
@@ -359,35 +581,36 @@ export function NotificationSettings() {
         </button>
       </div>
 
-      {permGranted === false && (
-        <div
-          className="rounded-xl p-3 text-sm text-center mb-2"
-          style={{
-            background: 'rgba(239,68,68,0.1)',
-            border: '1px solid rgba(239,68,68,0.3)',
-            color: '#fca5a5',
-            fontFamily: '"Tajawal", sans-serif',
-          }}
-          data-testid="text-permission-warning"
-        >
-          إذن الإشعارات غير مفعَّل — افتح إعدادات النظام واسمح للتطبيق بالإشعارات
-        </div>
-      )}
-
       {status && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           className="rounded-xl p-3 text-sm text-center"
           style={{
-            background: 'rgba(193,154,107,0.15)',
-            border: '1px solid rgba(193,154,107,0.35)',
-            color: '#FFE08A',
+            background:
+              status.tone === 'err'
+                ? 'rgba(239,68,68,0.12)'
+                : status.tone === 'warn'
+                  ? 'rgba(234,179,8,0.12)'
+                  : 'rgba(193,154,107,0.15)',
+            border: `1px solid ${
+              status.tone === 'err'
+                ? 'rgba(239,68,68,0.35)'
+                : status.tone === 'warn'
+                  ? 'rgba(234,179,8,0.35)'
+                  : 'rgba(193,154,107,0.35)'
+            }`,
+            color:
+              status.tone === 'err'
+                ? '#fca5a5'
+                : status.tone === 'warn'
+                  ? '#fde68a'
+                  : '#FFE08A',
             fontFamily: '"Tajawal", sans-serif',
           }}
           data-testid="text-status"
         >
-          {status}
+          {status.text}
         </motion.div>
       )}
     </div>

@@ -45,8 +45,9 @@ import { AthanPopup } from "@/components/AthanPopup";
 import {
   scheduleMonthOfPrayers,
   startForegroundWatcher,
-  ensurePermission,
 } from "@/lib/notifications/scheduler";
+import { requestNotificationsPermission } from "@/lib/notifications/permissions";
+import { App as CapApp } from "@capacitor/app";
 
 const queryClient = new QueryClient();
 
@@ -173,15 +174,17 @@ function Router() {
 }
 
 function PrayerNotificationsBootstrap() {
-  // After login, ensure permission, kick off scheduling for the next 30 days,
-  // and start the in-app foreground watcher (so the popup fires while the app
-  // is open even on the web).
+  // After login, request notification permission immediately, kick off
+  // scheduling for the next 30 days, and start the in-app foreground watcher
+  // (so the popup fires while the app is open even on the web).
+  // Also re-schedule whenever the app comes back to the foreground so newly
+  // granted permissions are picked up without needing a fresh login.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    const reschedule = async () => {
       try {
-        await ensurePermission();
-        startForegroundWatcher();
+        await requestNotificationsPermission();
         const profile = getCacheValue<UserProfile | null>("profile", null);
         if (cancelled) return;
         if (profile?.lat != null && profile?.lng != null) {
@@ -194,9 +197,25 @@ function PrayerNotificationsBootstrap() {
       } catch (e) {
         console.warn("[notif] bootstrap failed", e);
       }
-    })();
+    };
+
+    startForegroundWatcher();
+    reschedule();
+
+    let removeListener: (() => void) | null = null;
+    CapApp.addListener("appStateChange", (state) => {
+      if (state.isActive) reschedule();
+    })
+      .then((handle) => {
+        removeListener = () => handle.remove();
+      })
+      .catch(() => {
+        /* not on a Capacitor platform — ignore */
+      });
+
     return () => {
       cancelled = true;
+      if (removeListener) removeListener();
     };
   }, []);
   return null;
