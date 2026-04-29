@@ -12,3 +12,9 @@ id = "BXaarGFwNnazrzD9cCoh9"
 uri = "file://attached_assets/noor_mobile_qr.png"
 type = "image"
 title = "QR تطبيق نور - امسح من Expo Go"
+
+[[outputs]]
+id = "kSuep2v4McU1bxwltvBLu"
+uri = "file://.local/tmp/expo-qr.png"
+type = "image"
+title = "Expo Go QR — Noor Mobile"
