@@ -16,7 +16,7 @@ export default function TabLayout() {
         headerShown: false,
         tabBarLabelStyle: {
           fontFamily: "Tajawal_500Medium",
-          fontSize: 11,
+          fontSize: 10,
         },
         tabBarStyle: {
           backgroundColor: colors.card,
@@ -41,11 +41,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="quran"
+        options={{
+          title: "القرآن",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="book" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="azkar"
         options={{
           title: "الأذكار",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book" size={size} color={color} />
+            <Ionicons name="leaf" size={size} color={color} />
           ),
         }}
       />
@@ -59,23 +68,25 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="qibla"
+        name="rankings"
         options={{
-          title: "القبلة",
+          title: "الترتيب",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="compass" size={size} color={color} />
+            <Ionicons name="trophy" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="more"
         options={{
-          title: "الإعدادات",
+          title: "المزيد",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
+            <Ionicons name="grid" size={size} color={color} />
           ),
         }}
       />
+      <Tabs.Screen name="qibla" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }
