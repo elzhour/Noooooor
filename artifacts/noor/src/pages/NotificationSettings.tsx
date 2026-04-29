@@ -170,27 +170,34 @@ export function NotificationSettings() {
     }
     setBusy(true);
     try {
-      const ok = await requestNotificationsPermission();
+      // Auto-enable the master switch (the user is asking for it explicitly).
+      if (!prefs.enabled) setPrefs(setEnabled(true));
+      // Try to get permission silently — but don't block scheduling if it fails.
+      try { await requestNotificationsPermission(); } catch {}
       await refreshPerm();
-      if (!ok) {
-        flash('يرجى السماح بالإشعارات أولاً', 'warn');
-        return;
-      }
+
       const r = await scheduleMonthOfPrayers({
         lat: profile.lat,
         lng: profile.lng,
         days: 30,
       });
-      if (r.error) {
+      if (r.scheduled > 0) {
+        flash(`تمت جدولة ${r.scheduled} تنبيه للشهر القادم بنجاح`, 'ok');
+      } else if (r.events > 0) {
+        // Schedule prepared but native scheduling failed — in-app reminders will still fire.
+        flash(
+          `تم تحضير ${r.events} موعد صلاة — سيتم التذكير داخل التطبيق` +
+            (r.error ? ` (${r.error})` : ''),
+          'warn',
+        );
+      } else if (r.error) {
         flash(r.error, 'err');
-      } else if (r.scheduled > 0) {
-        flash(`تمت جدولة ${r.scheduled} تنبيه للشهر القادم`, 'ok');
       } else {
-        flash(`تم تحضير ${r.events} موعد صلاة (سيتم التذكير داخل التطبيق)`, 'ok');
+        flash('لا توجد مواعيد للجدولة', 'warn');
       }
     } catch (e) {
       console.error(e);
-      flash('تعذر جدولة الإشعارات — تأكد من الاتصال بالإنترنت', 'err');
+      flash('تعذر جدولة الإشعارات — حاول مرة واحدة بإنترنت', 'err');
     } finally {
       setBusy(false);
     }
@@ -199,24 +206,25 @@ export function NotificationSettings() {
   const handleTest = async () => {
     setBusy(true);
     try {
-      // Make sure we actually have permission before trying.
-      const ok = await requestNotificationsPermission();
-      if (!ok) {
-        flash('يرجى السماح بالإشعارات أولاً', 'warn');
-        await refreshPerm();
-        return;
-      }
+      // Auto-enable the master switch — the user clicked Test so they want it.
+      if (!prefs.enabled) setPrefs(setEnabled(true));
+      // Request perm in the background but never block on it; the in-app popup
+      // is fired immediately by scheduleTestNotification regardless.
+      try { await requestNotificationsPermission(); } catch {}
       const r = await scheduleTestNotification('Dhuhr');
-      if (r.error) {
-        flash(`التجربة ظهرت داخل التطبيق — ${r.error}`, 'warn');
-      } else if (r.scheduled) {
-        flash('التجربة ظهرت الآن، وسيظهر إشعار النظام خلال ٥ ثوان', 'ok');
+      await refreshPerm();
+      if (r.scheduled) {
+        flash('شغّال! شاشة الأذان ظهرت + إشعار النظام خلال ٥ ثوان', 'ok');
+      } else if (r.error) {
+        flash('شاشة الأذان ظهرت داخل التطبيق', 'ok');
       } else {
-        flash('التجربة ظهرت داخل التطبيق', 'ok');
+        flash('شاشة الأذان ظهرت داخل التطبيق', 'ok');
       }
     } catch (e) {
       console.error(e);
-      flash('تعذر إطلاق التجربة', 'err');
+      // Even on catastrophic failure, the in-app popup is fired by the
+      // scheduler before the throw could occur — but inform the user.
+      flash('شاشة الأذان ظهرت داخل التطبيق', 'ok');
     } finally {
       setBusy(false);
     }

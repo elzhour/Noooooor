@@ -9,7 +9,6 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { MiniPlayer } from "@/components/MiniPlayer";
 import { AudioProvider } from "@/contexts/AudioContext";
 import { AppSettingsProvider, useAppSettings } from "@/contexts/AppSettingsContext";
-import { SplashScreen } from "@/components/SplashScreen";
 
 import { Login } from "@/pages/Login";
 import { Home } from "@/pages/Home";
@@ -235,13 +234,9 @@ function AppContent() {
 }
 
 function App() {
-  const [splashDone, setSplashDone] = useState(false);
+  // Splash screen disabled per user request — open straight to the app.
+  const [splashDone] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-
-  const handleSplashDone = useCallback(() => {
-    setSplashDone(true);
-    document.documentElement.dir = 'rtl';
-  }, []);
 
   const handleLoginComplete = useCallback(() => {
     setIsLoggedIn(true);
@@ -280,9 +275,7 @@ function App() {
 
   return (
     <>
-      {!splashDone && <SplashScreen onDone={handleSplashDone} />}
-
-      {splashDone && isLoggedIn === null && (
+      {isLoggedIn === null && (
         <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
           <div className="text-center">
             <div className="w-16 h-16 border-4 border-[#C19A6B]/30 border-t-[#C19A6B] rounded-full animate-spin mx-auto mb-4" />
@@ -291,13 +284,13 @@ function App() {
         </div>
       )}
 
-      {splashDone && isLoggedIn === false && (
+      {isLoggedIn === false && (
         <QueryClientProvider client={queryClient}>
           <Login onComplete={handleLoginComplete} />
         </QueryClientProvider>
       )}
 
-      {splashDone && isLoggedIn === true && (
+      {isLoggedIn === true && (
         <QueryClientProvider client={queryClient}>
           <AppSettingsProvider>
             <AudioProvider>
