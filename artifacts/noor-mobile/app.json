@@ -34,7 +34,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#FDFBF0"
-      }
+      },
+      "package": "com.seif333.noormobile"
     },
     "web": {
       "favicon": "./assets/images/icon.png"
