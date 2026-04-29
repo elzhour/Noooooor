@@ -92,7 +92,6 @@ outputType = "console"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "cd artifacts/noor-mobile && pnpm run dev"
-waitForPort = 8000
 
 [agent]
 stack = "FULLSTACK_JS"
