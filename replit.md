@@ -47,6 +47,14 @@ This is a pnpm monorepo workspace.
 - Isolated Vite dev environment for UI component prototyping
 - Registered at path `/__mockup`
 
+### `artifacts/noor-mobile/`
+- **Expo / React Native** mobile companion app (runs via Expo Go)
+- Brand: gold `#C19A6B`, beige `#FDFBF0`, Tajawal + Amiri fonts, RTL Arabic
+- Tabs: Home (prayer times + next-prayer countdown), Azkar, Tasbih, Qibla, Settings
+- Prayer times computed locally with `adhan` library; Adhan notifications via `expo-notifications`
+- Workflow: `artifacts/noor-mobile: Mobile App` (port 8000, console output, prints QR code for Expo Go)
+- Progress tracker at `/NOOR_MOBILE_STEPS.md` (in Arabic)
+
 ### `lib/`
 - `lib/db` — Drizzle ORM schema and database client
 - `lib/api-spec` — OpenAPI spec (source of truth for API contracts)

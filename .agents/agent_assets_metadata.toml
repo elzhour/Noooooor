@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "BCIcVeIRdxzLDAT98cEIH"
+uri = "file://NOOR_MOBILE_STEPS.md"
+type = "text"
+title = "خطوات نور موبايل (تتبّع التقدّم)"
