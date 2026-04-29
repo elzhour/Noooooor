@@ -86,13 +86,13 @@ args = "artifacts/noor-mobile: Mobile App"
 name = "artifacts/noor-mobile: Mobile App"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "pnpm --filter @workspace/noor-mobile run dev"
-waitForPort = 8000
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/noor-mobile && pnpm run dev"
+waitForPort = 8000
 
 [agent]
 stack = "FULLSTACK_JS"
