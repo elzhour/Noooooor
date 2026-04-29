@@ -26,7 +26,9 @@
         "VIBRATE",
         "WAKE_LOCK",
         "RECEIVE_BOOT_COMPLETED",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ],
       "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
@@ -67,7 +69,11 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "eas": {
+        "projectId": "b21e989d-e0dd-4c0a-8f38-3ce618e5b252"
       }
-    }
+    },
+    "owner": "seif333"
   }
 }
