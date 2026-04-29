@@ -181,10 +181,12 @@ export function NotificationSettings() {
         lng: profile.lng,
         days: 30,
       });
-      if (r.offline && r.scheduled === 0) {
-        flash('تعذر الجدولة — حاول الاتصال بالإنترنت مرة واحدة', 'err');
+      if (r.error) {
+        flash(r.error, 'err');
+      } else if (r.scheduled > 0) {
+        flash(`تمت جدولة ${r.scheduled} تنبيه للشهر القادم`, 'ok');
       } else {
-        flash(`تمت جدولة ${r.scheduled || r.events} تنبيه للشهر القادم`, 'ok');
+        flash(`تم تحضير ${r.events} موعد صلاة (سيتم التذكير داخل التطبيق)`, 'ok');
       }
     } catch (e) {
       console.error(e);
@@ -204,8 +206,14 @@ export function NotificationSettings() {
         await refreshPerm();
         return;
       }
-      await scheduleTestNotification('Dhuhr');
-      flash('سيتم إطلاق التجربة بعد ٥ ثوانٍ', 'ok');
+      const r = await scheduleTestNotification('Dhuhr');
+      if (r.error) {
+        flash(`التجربة ظهرت داخل التطبيق — ${r.error}`, 'warn');
+      } else if (r.scheduled) {
+        flash('التجربة ظهرت الآن، وسيظهر إشعار النظام خلال ٥ ثوان', 'ok');
+      } else {
+        flash('التجربة ظهرت داخل التطبيق', 'ok');
+      }
     } catch (e) {
       console.error(e);
       flash('تعذر إطلاق التجربة', 'err');

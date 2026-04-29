@@ -45,6 +45,7 @@ import { AthanPopup } from "@/components/AthanPopup";
 import {
   scheduleMonthOfPrayers,
   startForegroundWatcher,
+  attachNativeNotificationListeners,
 } from "@/lib/notifications/scheduler";
 import { requestNotificationsPermission } from "@/lib/notifications/permissions";
 import { App as CapApp } from "@capacitor/app";
@@ -200,6 +201,7 @@ function PrayerNotificationsBootstrap() {
     };
 
     startForegroundWatcher();
+    attachNativeNotificationListeners();
     reschedule();
 
     let removeListener: (() => void) | null = null;

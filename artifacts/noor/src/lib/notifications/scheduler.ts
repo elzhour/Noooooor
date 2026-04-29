@@ -11,6 +11,10 @@
  *
  * Local notifications are stored in the OS scheduler (AlarmManager on Android),
  * so they fire even when the app is closed and the device has no internet.
+ *
+ * Channels are versioned (suffix _v3). Android persists notification channels
+ * forever and will not let you change `sound` or `importance` once created;
+ * bumping the suffix forces a fresh channel with the correct settings.
  */
 
 import { Capacitor } from '@capacitor/core';
@@ -22,8 +26,14 @@ import {
 import { PRAYER_KEYS, PRAYER_NAMES_AR, loadPrefs, type PrayerKey } from './prefs';
 import { requestNotificationsPermission } from './permissions';
 
-export const PRAYER_NOTIF_CHANNEL = 'noor_prayer_athan';
-export const PRAYER_NOTIF_CHANNEL_TEXT = 'noor_prayer_text';
+export const PRAYER_NOTIF_CHANNEL = 'noor_prayer_athan_v3';
+export const PRAYER_NOTIF_CHANNEL_TEXT = 'noor_prayer_text_v3';
+const OLD_CHANNEL_IDS = [
+  'noor_prayer_athan',
+  'noor_prayer_text',
+  'noor_prayer_athan_v2',
+  'noor_prayer_text_v2',
+];
 
 interface ScheduleParams {
   lat: number;
@@ -41,7 +51,7 @@ interface CachedMonth {
 
 const CACHE_KEY_PREFIX = 'noor.prayer_calendar_v1.';
 const CACHE_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
-const TOLERANCE_MS = 90_000;
+const TOLERANCE_MS = 5 * 60_000; // 5 minutes — catches manual time-changes
 
 /** A stable numeric id per (date, prayer) so we can cancel the previous batch. */
 function notifIdFor(date: Date, prayer: PrayerKey): number {
@@ -181,31 +191,41 @@ async function buildSchedule(
   return events;
 }
 
+let _channelsCreated = false;
 async function ensureChannels(): Promise<void> {
+  if (_channelsCreated) return;
   if (!Capacitor.isNativePlatform()) return;
   if (Capacitor.getPlatform() !== 'android') return;
-  try {
-    await LocalNotifications.createChannel({
-      id: PRAYER_NOTIF_CHANNEL,
-      name: 'Athan',
-      description: 'Prayer time call (athan)',
-      importance: 5, // IMPORTANCE_HIGH
-      visibility: 1,
-      sound: 'athan.mp3',
-      vibration: true,
-      lights: true,
-    });
-    await LocalNotifications.createChannel({
-      id: PRAYER_NOTIF_CHANNEL_TEXT,
-      name: 'Prayer Reminder',
-      description: 'Silent text prayer notification',
-      importance: 4,
-      visibility: 1,
-      vibration: true,
-    });
-  } catch (e) {
-    console.warn('[notif] createChannel failed', e);
+
+  // Best-effort: clear out any old/broken channel definitions so a fresh
+  // re-install isn't required when we change channel settings.
+  for (const old of OLD_CHANNEL_IDS) {
+    try {
+      await LocalNotifications.deleteChannel({ id: old });
+    } catch {
+      /* channel didn't exist or platform doesn't support delete — ignore */
+    }
   }
+
+  await LocalNotifications.createChannel({
+    id: PRAYER_NOTIF_CHANNEL,
+    name: 'الأذان',
+    description: 'صوت الأذان عند موعد الصلاة',
+    importance: 5, // IMPORTANCE_HIGH — heads-up + sound
+    visibility: 1,
+    sound: 'athan',
+    vibration: true,
+    lights: true,
+  });
+  await LocalNotifications.createChannel({
+    id: PRAYER_NOTIF_CHANNEL_TEXT,
+    name: 'تنبيه الصلاة',
+    description: 'تنبيه نصي قبل الصلاة',
+    importance: 4,
+    visibility: 1,
+    vibration: true,
+  });
+  _channelsCreated = true;
 }
 
 /** Backwards-compatible alias. Prefer `requestNotificationsPermission` from `./permissions`. */
@@ -228,11 +248,17 @@ async function cancelPrevious(): Promise<void> {
 
 /**
  * Schedule the next `days` of prayer notifications for the given coordinates.
- * Returns the number of notifications actually scheduled.
+ * Returns the number of notifications actually scheduled, plus any error
+ * message so the UI can surface it to the user.
  */
 export async function scheduleMonthOfPrayers(
   params: ScheduleParams,
-): Promise<{ scheduled: number; events: number; offline: boolean }> {
+): Promise<{
+  scheduled: number;
+  events: number;
+  offline: boolean;
+  error?: string;
+}> {
   const { lat, lng, days = 30 } = params;
   const prefs = loadPrefs();
   if (!prefs.enabled) return { scheduled: 0, events: 0, offline: false };
@@ -244,7 +270,12 @@ export async function scheduleMonthOfPrayers(
   } catch (e) {
     offline = true;
     console.warn('[notif] buildSchedule failed', e);
-    return { scheduled: 0, events: 0, offline };
+    return {
+      scheduled: 0,
+      events: 0,
+      offline,
+      error: 'تعذر تحميل مواقيت الصلاة — تأكد من الاتصال بالإنترنت مرة واحدة',
+    };
   }
 
   // Always remember the upcoming events for the foreground watcher (web + app).
@@ -264,7 +295,17 @@ export async function scheduleMonthOfPrayers(
     return { scheduled: 0, events: events.length, offline: false };
   }
 
-  await ensureChannels();
+  try {
+    await ensureChannels();
+  } catch (e) {
+    console.error('[notif] ensureChannels failed', e);
+    return {
+      scheduled: 0,
+      events: events.length,
+      offline,
+      error: 'تعذر تجهيز قناة الأذان — أعد تثبيت التطبيق',
+    };
+  }
   await cancelPrevious();
 
   const notifications: LocalNotificationSchema[] = [];
@@ -281,7 +322,7 @@ export async function scheduleMonthOfPrayers(
       body: `حان الآن موعد أذان ${arName}`,
       schedule: { at: ev.when, allowWhileIdle: true },
       channelId: isAthan ? PRAYER_NOTIF_CHANNEL : PRAYER_NOTIF_CHANNEL_TEXT,
-      sound: isAthan ? 'athan.mp3' : undefined,
+      sound: isAthan ? 'athan' : undefined,
       smallIcon: 'ic_stat_notify',
       iconColor: '#C19A6B',
       autoCancel: true,
@@ -297,6 +338,7 @@ export async function scheduleMonthOfPrayers(
 
   const CHUNK = 50;
   let scheduled = 0;
+  let lastError: string | undefined;
   for (let i = 0; i < notifications.length; i += CHUNK) {
     const slice = notifications.slice(i, i + CHUNK);
     const opts: ScheduleOptions = { notifications: slice };
@@ -304,95 +346,187 @@ export async function scheduleMonthOfPrayers(
       await LocalNotifications.schedule(opts);
       scheduled += slice.length;
     } catch (e) {
-      console.warn('[notif] schedule chunk failed', e);
+      console.error('[notif] schedule chunk failed', e);
+      lastError = (e as Error)?.message || String(e);
     }
+  }
+
+  if (scheduled === 0 && notifications.length > 0) {
+    return {
+      scheduled,
+      events: events.length,
+      offline,
+      error:
+        'تعذر جدولة التنبيهات — تأكد من السماح بالإشعارات والتنبيهات الدقيقة' +
+        (lastError ? ` (${lastError})` : ''),
+    };
   }
 
   return { scheduled, events: events.length, offline };
 }
 
-/** Fire a one-off test notification ~5 seconds from now. */
-export async function scheduleTestNotification(prayer: PrayerKey = 'Dhuhr'): Promise<void> {
+/**
+ * Fire the in-app full-screen Adhan popup immediately (used by the test button
+ * and by the foreground watcher when a scheduled prayer time arrives while the
+ * app is open).
+ */
+export function fireInAppAdhan(prayer: PrayerKey, mode: 'athan' | 'text' = 'athan'): void {
+  window.dispatchEvent(
+    new CustomEvent('noor:athan-fire', {
+      detail: { prayer, prayerNameAr: PRAYER_NAMES_AR[prayer], kind: mode },
+    }),
+  );
+}
+
+/**
+ * Fire a one-off test notification:
+ *   1. Fires the in-app popup IMMEDIATELY so the user always sees feedback.
+ *   2. Also schedules a system notification ~5s in the future so the user can
+ *      verify that scheduled notifications work even if they leave the app.
+ */
+export async function scheduleTestNotification(
+  prayer: PrayerKey = 'Dhuhr',
+): Promise<{ inAppFired: boolean; scheduled: boolean; error?: string }> {
   const prefs = loadPrefs();
-  const mode = prefs.modes[prayer];
-  const fireMode = mode === 'silent' ? 'athan' : mode;
-  const isAthan = fireMode === 'athan';
+  const mode = prefs.modes[prayer] === 'silent' ? 'athan' : prefs.modes[prayer];
+  const isAthan = mode === 'athan';
   const arName = PRAYER_NAMES_AR[prayer];
   const when = new Date(Date.now() + 5_000);
 
+  // Always fire the in-app popup right away — guarantees visible feedback.
+  fireInAppAdhan(prayer, mode);
+
   if (!Capacitor.isNativePlatform()) {
-    setTimeout(() => {
-      window.dispatchEvent(
-        new CustomEvent('noor:athan-fire', {
-          detail: { prayer, prayerNameAr: arName, kind: fireMode },
-        }),
-      );
-    }, 800);
-    return;
+    return { inAppFired: true, scheduled: false };
   }
 
-  await ensureChannels();
-  await ensurePermission();
-  await LocalNotifications.schedule({
-    notifications: [
-      {
-        id: 999_001,
-        title: isAthan ? `(تجربة) أذان ${arName}` : '(تجربة) تنبيه الصلاة',
-        body: `حان الآن موعد أذان ${arName}`,
-        schedule: { at: when, allowWhileIdle: true },
-        channelId: isAthan ? PRAYER_NOTIF_CHANNEL : PRAYER_NOTIF_CHANNEL_TEXT,
-        sound: isAthan ? 'athan.mp3' : undefined,
-        smallIcon: 'ic_stat_notify',
-        iconColor: '#C19A6B',
-        extra: { kind: isAthan ? 'athan' : 'text', prayer, prayerNameAr: arName },
-      },
-    ],
-  });
+  try {
+    await ensureChannels();
+    const granted = await requestNotificationsPermission();
+    if (!granted) {
+      return {
+        inAppFired: true,
+        scheduled: false,
+        error: 'لم يتم منح إذن الإشعارات — التجربة تظهر داخل التطبيق فقط',
+      };
+    }
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: 999_001,
+          title: isAthan ? `(تجربة) أذان ${arName}` : '(تجربة) تنبيه الصلاة',
+          body: `حان الآن موعد أذان ${arName}`,
+          schedule: { at: when, allowWhileIdle: true },
+          channelId: isAthan ? PRAYER_NOTIF_CHANNEL : PRAYER_NOTIF_CHANNEL_TEXT,
+          sound: isAthan ? 'athan' : undefined,
+          smallIcon: 'ic_stat_notify',
+          iconColor: '#C19A6B',
+          extra: { kind: mode, prayer, prayerNameAr: arName },
+        },
+      ],
+    });
+    return { inAppFired: true, scheduled: true };
+  } catch (e) {
+    console.error('[notif] scheduleTestNotification failed', e);
+    return {
+      inAppFired: true,
+      scheduled: false,
+      error: (e as Error)?.message || String(e),
+    };
+  }
 }
 
 let _watcherTimer: ReturnType<typeof setInterval> | null = null;
-const _firedKeys = new Set<string>();
+let _firedKeys = new Set<string>();
+let _firedKeysDay = -1;
+
+function tickWatcher(): void {
+  try {
+    const prefs = loadPrefs();
+    if (!prefs.enabled) return;
+
+    // Reset the de-dup set every calendar day so a new day's prayers can fire.
+    const today = new Date().getDate();
+    if (today !== _firedKeysDay) {
+      _firedKeys = new Set();
+      _firedKeysDay = today;
+    }
+
+    const raw = localStorage.getItem('noor.next_prayer_events');
+    if (!raw) return;
+    const events = JSON.parse(raw) as Array<{ when: string; prayer: PrayerKey }>;
+    const now = Date.now();
+    for (const ev of events) {
+      const t = new Date(ev.when).getTime();
+      const key = `${ev.prayer}:${ev.when}`;
+      if (_firedKeys.has(key)) continue;
+      // Fire if we are within `TOLERANCE_MS` of the prayer time (handles
+      // manual phone clock changes — generous 5-minute window).
+      if (t <= now && now - t < TOLERANCE_MS) {
+        _firedKeys.add(key);
+        const mode = prefs.modes[ev.prayer];
+        if (mode === 'silent') continue;
+        fireInAppAdhan(ev.prayer, mode);
+      }
+    }
+  } catch (e) {
+    console.warn('[notif] watcher tick failed', e);
+  }
+}
 
 export function startForegroundWatcher(): void {
-  if (_watcherTimer) return;
-  const tick = () => {
-    try {
-      const prefs = loadPrefs();
-      if (!prefs.enabled) return;
-      const raw = localStorage.getItem('noor.next_prayer_events');
-      if (!raw) return;
-      const events = JSON.parse(raw) as Array<{ when: string; prayer: PrayerKey }>;
-      const now = Date.now();
-      for (const ev of events) {
-        const t = new Date(ev.when).getTime();
-        const key = `${ev.prayer}:${ev.when}`;
-        if (_firedKeys.has(key)) continue;
-        if (t <= now && now - t < TOLERANCE_MS) {
-          _firedKeys.add(key);
-          const mode = prefs.modes[ev.prayer];
-          if (mode === 'silent') continue;
-          window.dispatchEvent(
-            new CustomEvent('noor:athan-fire', {
-              detail: {
-                prayer: ev.prayer,
-                prayerNameAr: PRAYER_NAMES_AR[ev.prayer],
-                kind: mode,
-              },
-            }),
-          );
-        }
-      }
-    } catch (e) {
-      console.warn('[notif] watcher tick failed', e);
-    }
-  };
-  _watcherTimer = setInterval(tick, 20_000);
-  tick();
+  if (_watcherTimer) {
+    tickWatcher();
+    return;
+  }
+  // Aggressive 5s polling — survives manual time changes and short focus windows.
+  _watcherTimer = setInterval(tickWatcher, 5_000);
+  tickWatcher();
 }
 
 export function stopForegroundWatcher(): void {
   if (_watcherTimer) {
     clearInterval(_watcherTimer);
     _watcherTimer = null;
+  }
+}
+
+/** Reset the in-memory de-dup so the watcher can re-fire prayers (used after manual time-changes / debugging). */
+export function resetWatcherFiredKeys(): void {
+  _firedKeys = new Set();
+  _firedKeysDay = -1;
+}
+
+let _nativeListenersAttached = false;
+/**
+ * Wire up Capacitor LocalNotifications listeners so when a scheduled prayer
+ * notification fires while the app is open (or the user taps it from the
+ * notification tray), we also open the in-app Adhan popup.
+ */
+export async function attachNativeNotificationListeners(): Promise<void> {
+  if (_nativeListenersAttached) return;
+  if (!Capacitor.isNativePlatform()) return;
+  _nativeListenersAttached = true;
+
+  const handleExtra = (extra: unknown) => {
+    if (!extra || typeof extra !== 'object') return;
+    const e = extra as Record<string, unknown>;
+    const kind = e.kind === 'text' ? 'text' : 'athan';
+    const prayer = (e.prayer as PrayerKey) || 'Dhuhr';
+    fireInAppAdhan(prayer, kind);
+  };
+
+  try {
+    await LocalNotifications.addListener('localNotificationReceived', (n) => {
+      handleExtra(n?.extra);
+    });
+    await LocalNotifications.addListener(
+      'localNotificationActionPerformed',
+      (a) => {
+        handleExtra(a?.notification?.extra);
+      },
+    );
+  } catch (e) {
+    console.warn('[notif] attachNativeNotificationListeners failed', e);
   }
 }

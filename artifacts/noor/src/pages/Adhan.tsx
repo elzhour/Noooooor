@@ -5,6 +5,7 @@ import { Link } from 'wouter';
 import { useUserSetting } from '@/hooks/use-user-setting';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { ADHAN_RECITERS } from '@/lib/constants';
+import domeImg from '@assets/qb_lskhr_1774983189616.jpg';
 
 function MosqueSVG() {
   return (
@@ -151,10 +152,62 @@ export function Adhan() {
 
   return (
     <div
-      className="min-h-screen flex flex-col max-w-lg mx-auto"
+      className="min-h-screen flex flex-col max-w-lg mx-auto relative overflow-hidden"
       dir="rtl"
-      style={{ background: 'linear-gradient(160deg, #0d0b07 0%, #1a1308 60%, #0d0b07 100%)' }}
+      style={{ background: '#060810' }}
     >
+      {/* ── Dome of the Rock background with slow Ken Burns zoom ── */}
+      <motion.div
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        initial={{ scale: 1.12 }}
+        animate={{ scale: 1.0 }}
+        transition={{ duration: 30, ease: 'easeOut', repeat: Infinity, repeatType: 'reverse' }}
+      >
+        <img
+          src={domeImg}
+          alt=""
+          className="w-full h-full object-cover"
+          style={{ filter: 'brightness(0.55) contrast(1.05) saturate(1.05)' }}
+        />
+      </motion.div>
+      {/* warm gold overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(ellipse at 50% 25%, rgba(255,210,140,0.18) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(8,10,18,0.35) 0%, rgba(8,10,18,0.85) 75%, rgba(8,10,18,0.95) 100%)',
+        }}
+      />
+      {/* gentle twinkling stars */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {[
+          { x: 10, y: 8, d: 0 },
+          { x: 30, y: 14, d: 0.7 },
+          { x: 55, y: 6, d: 1.4 },
+          { x: 78, y: 12, d: 0.3 },
+          { x: 90, y: 22, d: 1.1 },
+          { x: 18, y: 30, d: 1.8 },
+          { x: 70, y: 36, d: 0.9 },
+        ].map((s, i) => (
+          <motion.div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              left: `${s.x}%`,
+              top: `${s.y}%`,
+              width: 3,
+              height: 3,
+              background: '#FFE08A',
+              boxShadow: '0 0 6px rgba(255,224,138,0.7)',
+            }}
+            animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1.1, 0.8] }}
+            transition={{ duration: 2.8, delay: s.d, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        ))}
+      </div>
+
+      {/* ── Foreground content ── */}
+      <div className="relative z-10 flex flex-col flex-1">
       {/* Header */}
       <div className="flex items-center gap-3 px-4 pt-12 pb-4">
         <Link href="/">
@@ -298,6 +351,7 @@ export function Adhan() {
             );
           })}
         </div>
+      </div>
       </div>
     </div>
   );

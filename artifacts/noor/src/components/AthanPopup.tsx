@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Volume2, VolumeX } from 'lucide-react';
 import { ADHAN_RECITERS } from '@/lib/constants';
 import { loadPrefs } from '@/lib/notifications/prefs';
+import domeImg from '@assets/qb_lskhr_1774983189616.jpg';
 
 type AthanFireDetail = {
   prayer: string;
@@ -246,13 +247,62 @@ export function AthanPopup() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6"
-          style={{
-            background:
-              'radial-gradient(circle at 50% 30%, #1a1206 0%, #0a0703 60%, #000 100%)',
-          }}
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-6 overflow-hidden"
+          style={{ background: '#060810' }}
           dir="rtl"
         >
+          {/* Dome of the Rock photo backdrop with slow Ken Burns zoom */}
+          <motion.div
+            className="absolute inset-0 pointer-events-none"
+            initial={{ scale: 1.18 }}
+            animate={{ scale: 1.0 }}
+            transition={{ duration: 35, ease: 'easeOut', repeat: Infinity, repeatType: 'reverse' }}
+          >
+            <img
+              src={domeImg}
+              alt=""
+              className="w-full h-full object-cover"
+              style={{ filter: 'brightness(0.5) contrast(1.05) saturate(1.1)' }}
+            />
+          </motion.div>
+          {/* warm gold glow + dark vignette overlay */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              background:
+                'radial-gradient(ellipse at 50% 30%, rgba(255,210,140,0.22) 0%, rgba(0,0,0,0) 55%), linear-gradient(180deg, rgba(8,10,18,0.45) 0%, rgba(8,10,18,0.85) 100%)',
+            }}
+          />
+          {/* twinkling stars */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {[
+              { x: 8, y: 12, d: 0 },
+              { x: 22, y: 6, d: 0.6 },
+              { x: 48, y: 8, d: 1.3 },
+              { x: 70, y: 14, d: 0.4 },
+              { x: 88, y: 10, d: 1.7 },
+              { x: 14, y: 28, d: 1.0 },
+              { x: 90, y: 32, d: 0.8 },
+            ].map((s, i) => (
+              <motion.div
+                key={i}
+                className="absolute rounded-full"
+                style={{
+                  left: `${s.x}%`,
+                  top: `${s.y}%`,
+                  width: 3,
+                  height: 3,
+                  background: '#FFE08A',
+                  boxShadow: '0 0 8px rgba(255,224,138,0.8)',
+                }}
+                animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1.2, 0.8] }}
+                transition={{ duration: 3, delay: s.d, repeat: Infinity, ease: 'easeInOut' }}
+              />
+            ))}
+          </div>
+
+          {/* Foreground UI wrapper */}
+          <div className="relative z-10 w-full h-full flex flex-col items-center justify-center">
           {/* close button */}
           <button
             onClick={close}
@@ -338,6 +388,7 @@ export function AthanPopup() {
             animate={{ scale: [0.92, 1.08, 0.92], opacity: [0.55, 0.15, 0.55] }}
             transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
           />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
