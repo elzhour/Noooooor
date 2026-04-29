@@ -6,3 +6,9 @@ id = "BCIcVeIRdxzLDAT98cEIH"
 uri = "file://NOOR_MOBILE_STEPS.md"
 type = "text"
 title = "خطوات نور موبايل (تتبّع التقدّم)"
+
+[[outputs]]
+id = "BXaarGFwNnazrzD9cCoh9"
+uri = "file://attached_assets/noor_mobile_qr.png"
+type = "image"
+title = "QR تطبيق نور - امسح من Expo Go"
