@@ -5,73 +5,83 @@ import { Link } from 'wouter';
 import { useUserSetting } from '@/hooks/use-user-setting';
 import { useAppSettings } from '@/contexts/AppSettingsContext';
 import { ADHAN_RECITERS } from '@/lib/constants';
+import { setAthanReciter } from '@/lib/notifications/prefs';
 import domeImg from '@assets/qb_lskhr_1774983189616.jpg';
 
-function MosqueSVG() {
+/**
+ * Circular Noor app logo — gold gradient ring with the Arabic "نُور" wordmark
+ * at the centre. Replaces the old detailed mosque illustration.
+ */
+function NoorCircleLogo() {
   return (
-    <svg
-      viewBox="0 0 320 200"
-      xmlns="http://www.w3.org/2000/svg"
-      className="w-full max-w-xs mx-auto"
-      style={{ filter: 'drop-shadow(0 0 20px rgba(193,154,107,0.3))' }}
-    >
-      <ellipse cx="160" cy="130" rx="140" ry="80" fill="rgba(193,154,107,0.04)" />
-      <rect x="18" y="68" width="18" height="102" fill="#2a200e" stroke="#C19A6B" strokeWidth="0.5" />
-      <rect x="16" y="62" width="22" height="10" rx="2" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.5" />
-      <ellipse cx="27" cy="61" rx="11" ry="14" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.7" />
-      <ellipse cx="27" cy="55" rx="5" ry="7" fill="#C19A6B" opacity="0.7" />
-      <line x1="27" y1="42" x2="27" y2="48" stroke="#C19A6B" strokeWidth="1.5" />
-      <polygon points="27,39 30,46 24,46" fill="#C19A6B" />
-      <rect x="22" y="90" width="10" height="8" rx="1" fill="rgba(193,154,107,0.2)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="22" y="108" width="10" height="8" rx="1" fill="rgba(193,154,107,0.2)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="284" y="68" width="18" height="102" fill="#2a200e" stroke="#C19A6B" strokeWidth="0.5" />
-      <rect x="282" y="62" width="22" height="10" rx="2" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.5" />
-      <ellipse cx="293" cy="61" rx="11" ry="14" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.7" />
-      <ellipse cx="293" cy="55" rx="5" ry="7" fill="#C19A6B" opacity="0.7" />
-      <line x1="293" y1="42" x2="293" y2="48" stroke="#C19A6B" strokeWidth="1.5" />
-      <polygon points="293,39 296,46 290,46" fill="#C19A6B" />
-      <rect x="288" y="90" width="10" height="8" rx="1" fill="rgba(193,154,107,0.2)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="288" y="108" width="10" height="8" rx="1" fill="rgba(193,154,107,0.2)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="62" y="44" width="24" height="126" fill="#2e2310" stroke="#C19A6B" strokeWidth="0.6" />
-      <rect x="59" y="36" width="30" height="12" rx="2" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.6" />
-      <ellipse cx="74" cy="35" rx="16" ry="18" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.8" />
-      <ellipse cx="74" cy="27" rx="7" ry="9" fill="#C19A6B" opacity="0.75" />
-      <line x1="74" y1="12" x2="74" y2="18" stroke="#C19A6B" strokeWidth="1.8" />
-      <polygon points="74,8 78,16 70,16" fill="#C19A6B" />
-      <rect x="67" y="70" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="67" y="92" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="67" y="114" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="234" y="44" width="24" height="126" fill="#2e2310" stroke="#C19A6B" strokeWidth="0.6" />
-      <rect x="231" y="36" width="30" height="12" rx="2" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.6" />
-      <ellipse cx="246" cy="35" rx="16" ry="18" fill="#3a2d14" stroke="#C19A6B" strokeWidth="0.8" />
-      <ellipse cx="246" cy="27" rx="7" ry="9" fill="#C19A6B" opacity="0.75" />
-      <line x1="246" y1="12" x2="246" y2="18" stroke="#C19A6B" strokeWidth="1.8" />
-      <polygon points="246,8 250,16 242,16" fill="#C19A6B" />
-      <rect x="239" y="70" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="239" y="92" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="239" y="114" width="14" height="10" rx="1.5" fill="rgba(193,154,107,0.25)" stroke="#C19A6B" strokeWidth="0.4" />
-      <rect x="86" y="100" width="148" height="70" fill="#241a08" stroke="#C19A6B" strokeWidth="0.8" />
-      <ellipse cx="107" cy="100" rx="22" ry="26" fill="#2e2310" stroke="#C19A6B" strokeWidth="0.8" />
-      <ellipse cx="107" cy="93" rx="10" ry="12" fill="#C19A6B" opacity="0.3" />
-      <ellipse cx="213" cy="100" rx="22" ry="26" fill="#2e2310" stroke="#C19A6B" strokeWidth="0.8" />
-      <ellipse cx="213" cy="93" rx="10" ry="12" fill="#C19A6B" opacity="0.3" />
-      <ellipse cx="160" cy="96" rx="52" ry="58" fill="#2e2310" stroke="#C19A6B" strokeWidth="1" />
-      <ellipse cx="160" cy="80" rx="30" ry="35" fill="#C19A6B" opacity="0.18" />
-      <ellipse cx="160" cy="72" rx="16" ry="18" fill="#C19A6B" opacity="0.25" />
-      <line x1="160" y1="50" x2="160" y2="56" stroke="#C19A6B" strokeWidth="2" />
-      <polygon points="160,45 164,54 156,54" fill="#C19A6B" />
-      <circle cx="160" cy="59" r="3" fill="#C19A6B" opacity="0.9" />
-      {[110, 145, 160, 175, 210].map((x, i) => (
-        <rect key={i} x={x - 9} y="114" width="18" height="25" rx="9" fill="rgba(193,154,107,0.15)" stroke="#C19A6B" strokeWidth="0.5" />
-      ))}
-      <rect x="140" y="120" width="40" height="50" rx="20" fill="#1a1204" stroke="#C19A6B" strokeWidth="0.8" />
-      <rect x="144" y="140" width="32" height="30" fill="#1a1204" />
-      <line x1="0" y1="170" x2="320" y2="170" stroke="#C19A6B" strokeWidth="0.8" opacity="0.5" />
-      {[[30,20],[55,10],[80,28],[200,14],[240,22],[270,8],[295,18],[130,16],[165,8],[40,35]].map(([sx,sy],i) => (
-        <circle key={i} cx={sx} cy={sy} r="1.2" fill="#C19A6B" opacity={0.4+(i%3)*0.2} />
-      ))}
-      <path d="M 50 18 A 10 10 0 1 1 62 12 A 7 7 0 1 0 50 18Z" fill="#C19A6B" opacity="0.8" />
-    </svg>
+    <div className="relative mx-auto" style={{ width: 156, height: 156 }}>
+      {/* outer glow */}
+      <motion.div
+        className="absolute inset-0 rounded-full pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle, rgba(193,154,107,0.55) 0%, rgba(193,154,107,0) 65%)',
+          filter: 'blur(8px)',
+        }}
+        animate={{ opacity: [0.55, 0.95, 0.55] }}
+        transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      {/* gradient ring */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          background:
+            'conic-gradient(from 220deg, #d4b483, #C19A6B, #8a6a3a, #d4b483, #C19A6B)',
+          padding: 3,
+        }}
+      >
+        {/* inner dark fill */}
+        <div
+          className="w-full h-full rounded-full flex flex-col items-center justify-center"
+          style={{
+            background:
+              'radial-gradient(circle at 50% 35%, #1a1408 0%, #060810 80%)',
+            border: '1px solid rgba(245,230,200,0.2)',
+            boxShadow:
+              'inset 0 0 30px rgba(193,154,107,0.25), 0 0 24px rgba(193,154,107,0.4)',
+          }}
+        >
+          {/* tiny crescent above the wordmark */}
+          <svg width={26} height={20} viewBox="0 0 26 20" className="mb-1">
+            <path
+              d="M 13 2 A 8 8 0 1 0 21 14 A 6 6 0 1 1 13 2 Z"
+              fill="#d4b483"
+              opacity={0.9}
+            />
+          </svg>
+          {/* نُور wordmark */}
+          <span
+            style={{
+              fontFamily: '"Amiri", "Scheherazade New", serif',
+              fontSize: '2.6rem',
+              lineHeight: 1,
+              color: '#F5E6C8',
+              textShadow:
+                '0 0 18px rgba(193,154,107,0.75), 0 0 36px rgba(193,154,107,0.35)',
+              letterSpacing: '0.02em',
+            }}
+          >
+            نُور
+          </span>
+          <span
+            style={{
+              fontFamily: '"Tajawal", sans-serif',
+              fontSize: '0.6rem',
+              letterSpacing: '0.32em',
+              color: 'rgba(193,154,107,0.7)',
+              marginTop: '0.35rem',
+            }}
+          >
+            NOOR
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -224,14 +234,14 @@ export function Adhan() {
         </h1>
       </div>
 
-      {/* Mosque illustration */}
+      {/* Circular Noor logo */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }}
         className="px-6 pt-2 pb-4"
       >
-        <MosqueSVG />
+        <NoorCircleLogo />
 
         <div className="flex items-center justify-center gap-2 mt-3">
           <div className="h-px flex-1 max-w-[60px]" style={{ background: 'linear-gradient(to right, transparent, rgba(193,154,107,0.5))' }} />
@@ -302,7 +312,7 @@ export function Adhan() {
                   background: isSelected ? 'rgba(193,154,107,0.18)' : 'rgba(255,255,255,0.04)',
                   border: isSelected ? '1px solid rgba(193,154,107,0.5)' : '1px solid rgba(255,255,255,0.07)',
                 }}
-                onClick={() => { setReciterId(r.id); stopAll(); }}
+                onClick={() => { setReciterId(r.id); setAthanReciter(r.id); stopAll(); }}
               >
                 <div className="flex items-center gap-3">
                   <div

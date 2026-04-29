@@ -16,7 +16,12 @@
     </style>
 
 
+    <!-- Native launcher splash disabled — the React app shows its own animated
+         dome splash as the very first paint. We just paint a solid dark
+         background here so there is no flash of cream/white before the React
+         splash takes over. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <item name="android:background">@color/launchBackground</item>
+        <item name="android:windowBackground">@color/launchBackground</item>
     </style>
 </resources>

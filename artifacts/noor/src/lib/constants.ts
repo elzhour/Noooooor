@@ -178,19 +178,15 @@ export const AZKAR_WEATHER = [
   { id:"wt5", text:"سُبْحَانَ الَّذِي يُسَبِّحُ الرَّعْدُ بِحَمْدِهِ وَالْمَلَائِكَةُ مِنْ خِيفَتِهِ.\n(عند سماع الرعد)", count:1, source:"الموطأ — صحيح" },
 ];
 
+// Local-bundled adhan audio. Files live in `public/adhan/*.mp3` so they ship
+// inside the APK and play even with no internet connection.
 export const ADHAN_RECITERS = [
-  { id: "azan1",  name: "أذان المدينة المنورة",       url: "https://www.islamcan.com/audio/adhan/azan1.mp3"  },
-  { id: "azan2",  name: "أذان مكة المكرمة",           url: "https://www.islamcan.com/audio/adhan/azan2.mp3"  },
-  { id: "azan3",  name: "أذان الفجر — المدينة",       url: "https://www.islamcan.com/audio/adhan/azan3.mp3"  },
-  { id: "azan4",  name: "أذان مصري كلاسيكي",          url: "https://www.islamcan.com/audio/adhan/azan4.mp3"  },
-  { id: "azan5",  name: "أذان هادئ — صوت خاشع",      url: "https://www.islamcan.com/audio/adhan/azan5.mp3"  },
-  { id: "azan6",  name: "أذان تركي عثماني",           url: "https://www.islamcan.com/audio/adhan/azan6.mp3"  },
-  { id: "azan7",  name: "أذان الشيخ عبد الباسط",      url: "https://www.islamcan.com/audio/adhan/azan7.mp3"  },
-  { id: "azan8",  name: "أذان صوت رخيم",             url: "https://www.islamcan.com/audio/adhan/azan8.mp3"  },
-  { id: "azan9",  name: "أذان الشيخ الحصري",          url: "https://www.islamcan.com/audio/adhan/azan9.mp3"  },
-  { id: "azan10", name: "أذان خليجي أصيل",            url: "https://www.islamcan.com/audio/adhan/azan10.mp3" },
-  { id: "azan11", name: "أذان بصوت مميز",             url: "https://www.islamcan.com/audio/adhan/azan11.mp3" },
-  { id: "azan12", name: "أذان الشيخ مشاري العفاسي",  url: "https://www.islamcan.com/audio/adhan/azan12.mp3" },
+  { id: "azan2",  name: "أذان مكة المكرمة",           url: "/adhan/azan2.mp3"  },
+  { id: "azan1",  name: "أذان المدينة المنورة",       url: "/adhan/azan1.mp3"  },
+  { id: "azan12", name: "أذان الشيخ مشاري العفاسي",  url: "/adhan/azan12.mp3" },
+  { id: "azan9",  name: "أذان الشيخ الحصري",          url: "/adhan/azan9.mp3"  },
+  { id: "azan7",  name: "أذان الشيخ عبد الباسط",      url: "/adhan/azan7.mp3"  },
+  { id: "azan3",  name: "أذان الفجر — المدينة",       url: "/adhan/azan3.mp3"  },
 ];
 
 // Reciters available on everyayah.com (per-ayah audio)

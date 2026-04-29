@@ -4,4 +4,6 @@
     <color name="colorPrimaryDark">#8B6340</color>
     <color name="colorAccent">#C19A6B</color>
     <color name="splash_background">#F5EFD9</color>
+    <!-- Match the React SplashScreen background so there is no flash on launch. -->
+    <color name="launchBackground">#060810</color>
 </resources>

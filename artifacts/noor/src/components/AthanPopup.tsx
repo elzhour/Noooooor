@@ -19,173 +19,85 @@ type AthanFireDetail = {
   kind: 'athan' | 'text';
 };
 
-function DomeOfTheRock() {
+/**
+ * Large circular Noor app logo with luminous gold ring + animated halo.
+ * Replaces the previous mosque/dome SVG so the dome-of-the-rock photo backdrop
+ * stays the visual focus.
+ */
+function NoorBigCircleLogo() {
   return (
-    <svg
-      viewBox="0 0 360 280"
-      xmlns="http://www.w3.org/2000/svg"
-      className="w-full max-w-md mx-auto"
-      style={{ filter: 'drop-shadow(0 0 35px rgba(218,165,32,0.45))' }}
+    <div
+      className="relative mx-auto"
+      style={{ width: 220, height: 220 }}
     >
-      <defs>
-        <radialGradient id="domeGold" cx="50%" cy="35%" r="65%">
-          <stop offset="0%" stopColor="#FFE08A" />
-          <stop offset="45%" stopColor="#E5B23A" />
-          <stop offset="100%" stopColor="#8C6418" />
-        </radialGradient>
-        <linearGradient id="wallGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3a2c14" />
-          <stop offset="100%" stopColor="#1c150a" />
-        </linearGradient>
-        <linearGradient id="tileGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1f6f9a" />
-          <stop offset="100%" stopColor="#0f3a55" />
-        </linearGradient>
-        <radialGradient id="aura" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="rgba(255,224,138,0.5)" />
-          <stop offset="100%" stopColor="rgba(255,224,138,0)" />
-        </radialGradient>
-      </defs>
-
-      {/* warm glow halo behind dome */}
-      <ellipse cx="180" cy="105" rx="160" ry="100" fill="url(#aura)" />
-
-      {/* tiled octagonal base */}
-      <polygon
-        points="60,200 105,160 255,160 300,200 300,250 60,250"
-        fill="url(#tileGrad)"
-        stroke="#C19A6B"
-        strokeWidth="1.2"
+      {/* outer halo */}
+      <motion.div
+        className="absolute inset-[-30px] rounded-full pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle, rgba(255,224,138,0.55) 0%, rgba(255,224,138,0) 70%)',
+          filter: 'blur(14px)',
+        }}
+        animate={{ opacity: [0.6, 1, 0.6], scale: [1, 1.06, 1] }}
+        transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
       />
-      {/* tile pattern lines */}
-      {[80, 110, 140, 170, 200, 230, 260, 290].map((x, i) => (
-        <line
-          key={i}
-          x1={x}
-          y1="160"
-          x2={x}
-          y2="250"
-          stroke="rgba(193,154,107,0.35)"
-          strokeWidth="0.6"
-        />
-      ))}
-      {[180, 200, 220].map((y, i) => (
-        <line
-          key={`h${i}`}
-          x1="60"
-          y1={y}
-          x2="300"
-          y2={y}
-          stroke="rgba(193,154,107,0.25)"
-          strokeWidth="0.6"
-        />
-      ))}
-
-      {/* arched windows */}
-      {[
-        [95, 195],
-        [135, 195],
-        [175, 195],
-        [215, 195],
-        [255, 195],
-      ].map(([cx, cy], i) => (
-        <g key={i}>
-          <path
-            d={`M ${cx - 10} ${cy + 25} L ${cx - 10} ${cy} A 10 12 0 0 1 ${cx + 10} ${cy} L ${cx + 10} ${cy + 25} Z`}
-            fill="#1a1306"
-            stroke="#C19A6B"
-            strokeWidth="0.8"
-          />
-          <line
-            x1={cx}
-            y1={cy - 6}
-            x2={cx}
-            y2={cy + 23}
-            stroke="rgba(193,154,107,0.5)"
-            strokeWidth="0.6"
-          />
-        </g>
-      ))}
-
-      {/* dome drum (cylindrical band under the dome) */}
-      <rect
-        x="125"
-        y="135"
-        width="110"
-        height="28"
-        fill="url(#wallGrad)"
-        stroke="#C19A6B"
-        strokeWidth="0.8"
-      />
-      {/* drum windows */}
-      {[140, 160, 180, 200, 220].map((cx, i) => (
-        <path
-          key={i}
-          d={`M ${cx - 4} 158 L ${cx - 4} 144 A 4 5 0 0 1 ${cx + 4} 144 L ${cx + 4} 158 Z`}
-          fill="#1a1306"
-          stroke="rgba(193,154,107,0.6)"
-          strokeWidth="0.5"
-        />
-      ))}
-
-      {/* the dome itself — wide elliptical golden cap */}
-      <path
-        d="M 120 135 A 60 78 0 0 1 240 135 Z"
-        fill="url(#domeGold)"
-        stroke="#7A4F1A"
-        strokeWidth="1.2"
-      />
-      {/* dome ribs */}
-      {[140, 155, 170, 180, 190, 205, 220].map((x, i) => (
-        <path
-          key={i}
-          d={`M ${x} 135 Q 180 ${50 + Math.abs(180 - x) * 0.2} 180 60`}
-          fill="none"
-          stroke="rgba(122,79,26,0.35)"
-          strokeWidth="0.5"
-        />
-      ))}
-      {/* dome highlight */}
-      <ellipse
-        cx="160"
-        cy="90"
-        rx="22"
-        ry="40"
-        fill="rgba(255,255,255,0.18)"
-      />
-
-      {/* finial (spike) on top with crescent */}
-      <line x1="180" y1="60" x2="180" y2="42" stroke="#C19A6B" strokeWidth="2" />
-      <circle cx="180" cy="40" r="3" fill="#FFE08A" stroke="#7A4F1A" strokeWidth="0.6" />
-      <path
-        d="M 180 30 A 7 7 0 1 1 187 25 A 5 5 0 1 0 180 30 Z"
-        fill="#FFE08A"
-        stroke="#7A4F1A"
-        strokeWidth="0.6"
-      />
-
-      {/* ground line */}
-      <line x1="20" y1="252" x2="340" y2="252" stroke="#C19A6B" strokeWidth="0.8" opacity="0.55" />
-
-      {/* twinkling stars */}
-      {[
-        [40, 30],
-        [70, 18],
-        [305, 22],
-        [330, 38],
-        [22, 80],
-        [338, 90],
-      ].map(([sx, sy], i) => (
-        <circle
-          key={`s${i}`}
-          cx={sx}
-          cy={sy}
-          r="1.4"
-          fill="#FFE08A"
-          opacity={0.55 + (i % 3) * 0.15}
-        />
-      ))}
-    </svg>
+      {/* gold gradient ring */}
+      <div
+        className="absolute inset-0 rounded-full"
+        style={{
+          background:
+            'conic-gradient(from 220deg, #FFE08A, #C19A6B, #7A4F1A, #FFE08A, #C19A6B)',
+          padding: 4,
+          boxShadow: '0 0 50px rgba(255,224,138,0.45)',
+        }}
+      >
+        {/* inner dark core */}
+        <div
+          className="w-full h-full rounded-full flex flex-col items-center justify-center"
+          style={{
+            background:
+              'radial-gradient(circle at 50% 35%, #1a1408 0%, #060810 80%)',
+            border: '1.5px solid rgba(245,230,200,0.25)',
+            boxShadow:
+              'inset 0 0 50px rgba(193,154,107,0.3)',
+          }}
+        >
+          {/* crescent above */}
+          <svg width={36} height={28} viewBox="0 0 36 28" className="mb-2">
+            <path
+              d="M 18 3 A 11 11 0 1 0 28 19 A 8 8 0 1 1 18 3 Z"
+              fill="#FFE08A"
+              opacity={0.95}
+            />
+          </svg>
+          {/* نُور */}
+          <span
+            style={{
+              fontFamily: '"Amiri", "Scheherazade New", serif',
+              fontSize: '3.6rem',
+              lineHeight: 1,
+              color: '#F5E6C8',
+              textShadow:
+                '0 0 22px rgba(255,224,138,0.85), 0 0 50px rgba(255,224,138,0.4)',
+              letterSpacing: '0.02em',
+            }}
+          >
+            نُور
+          </span>
+          <span
+            style={{
+              fontFamily: '"Tajawal", sans-serif',
+              fontSize: '0.7rem',
+              letterSpacing: '0.36em',
+              color: 'rgba(255,224,138,0.75)',
+              marginTop: '0.5rem',
+            }}
+          >
+            NOOR
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -346,7 +258,7 @@ export function AthanPopup() {
               animate={{ y: [0, -6, 0] }}
               transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
             >
-              <DomeOfTheRock />
+              <NoorBigCircleLogo />
             </motion.div>
           </motion.div>
 
