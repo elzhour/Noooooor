@@ -74,6 +74,15 @@ function AuthGate() {
         name="settings"
         options={{ title: "الإعدادات", headerTitleAlign: "center" }}
       />
+      <Stack.Screen name="asma" options={{ headerShown: false }} />
+      <Stack.Screen name="hadith" options={{ headerShown: false }} />
+      <Stack.Screen name="radio" options={{ headerShown: false }} />
+      <Stack.Screen name="islamictv" options={{ headerShown: false }} />
+      <Stack.Screen name="mosques" options={{ headerShown: false }} />
+      <Stack.Screen name="history" options={{ headerShown: false }} />
+      <Stack.Screen name="prophetstories" options={{ headerShown: false }} />
+      <Stack.Screen name="quizzes" options={{ headerShown: false }} />
+      <Stack.Screen name="sunnah" options={{ headerShown: false }} />
     </Stack>
   );
 }

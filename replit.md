@@ -50,8 +50,14 @@ This is a pnpm monorepo workspace.
 ### `artifacts/noor-mobile/`
 - **Expo / React Native** mobile companion app (runs via Expo Go)
 - Brand: gold `#C19A6B`, beige `#FDFBF0`, Tajawal + Amiri fonts, RTL Arabic
-- Tabs: Home (prayer times + next-prayer countdown), Azkar, Tasbih, Qibla, Settings
+- **Tabs**: Home (prayer times + next-prayer countdown), Azkar, Tasbih, Qibla, More, Settings
+- **More tab screens**: Asma ul-Husna (99 names), Hadith browser, Islamic Radio, Islamic TV, Mosques finder, Islamic History, Prophet Stories, Islamic Quizzes, Sunnah browser
 - Prayer times computed locally with `adhan` library; Adhan notifications via `expo-notifications`
+- **Android Home Screen Widgets**: PrayerTimesWidget (5 daily prayers) + NextPrayerWidget (countdown)
+  - Powered by `react-native-android-widget`; task handler in `widgets/widgetTaskHandler.tsx`
+  - Widget config in `app.json` plugins array; entry point `index.js` (main field must = `./index.js`)
+  - Home screen saves location to AsyncStorage `@noor/location` key for widget task handler
+- **Data**: 99 names in `lib/constants.ts`; sunnah + prophets-meta JSON in `data/` folder
 - Workflow: `artifacts/noor-mobile: Mobile App` (port 8000, console output, prints QR code for Expo Go)
 - Progress tracker at `/NOOR_MOBILE_STEPS.md` (in Arabic)
 

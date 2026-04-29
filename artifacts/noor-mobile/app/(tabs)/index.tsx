@@ -9,17 +9,18 @@ import {
   Image,
   Pressable,
   Alert,
+  Platform,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColors } from "@/hooks/useColors";
 import { computePrayerTimes, type PrayerData } from "@/utils/prayerTimes";
 import { fetchCurrentLocation, type LocationResult } from "@/utils/location";
 import {
-  ensureChannelAsync,
+  ensureChannelsAsync,
   getEnabled,
   requestPermissionsAsync,
   scheduleAdhanForRows,
@@ -40,6 +41,44 @@ export default function HomeScreen() {
     setLocation(loc);
     const data = computePrayerTimes(loc.latitude, loc.longitude, new Date());
     setPrayerData(data);
+    if (Platform.OS === "android") {
+      try {
+        await AsyncStorage.setItem(
+          "@noor/location",
+          JSON.stringify({ lat: loc.latitude, lng: loc.longitude })
+        );
+        const { requestWidgetUpdate } = await import("react-native-android-widget");
+        const { PrayerTimesWidget } = await import("@/widgets/PrayerTimesWidget");
+        const { NextPrayerWidget } = await import("@/widgets/NextPrayerWidget");
+        const prayers = data.rows.map((r) => ({
+          name: r.arabicName,
+          time: r.date.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
+          isNext: data.next?.key === r.key,
+        }));
+        const prayerTimesData = {
+          prayers,
+          date: new Date().toLocaleDateString("ar-EG"),
+          hijri: data.hijriDate,
+        };
+        const nextData = data.next
+          ? {
+              prayerName: data.next.arabicName,
+              prayerTime: data.next.date.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
+              countdown: "",
+              date: new Date().toLocaleDateString("ar-EG"),
+              hijri: data.hijriDate,
+            }
+          : null;
+        await requestWidgetUpdate({
+          widgetName: "PrayerTimesWidget",
+          renderWidget: () => React.createElement(PrayerTimesWidget as any, { data: prayerTimesData }),
+        }).catch(() => {});
+        await requestWidgetUpdate({
+          widgetName: "NextPrayerWidget",
+          renderWidget: () => React.createElement(NextPrayerWidget as any, { data: nextData }),
+        }).catch(() => {});
+      } catch {}
+    }
     return data;
   }, []);
 
@@ -47,7 +86,7 @@ export default function HomeScreen() {
     let cancelled = false;
     (async () => {
       try {
-        await ensureChannelAsync();
+        await ensureChannelsAsync();
         const data = await loadAll();
         if (cancelled) return;
         const enabled = await getEnabled();
