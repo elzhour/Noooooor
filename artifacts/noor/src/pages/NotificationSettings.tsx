@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link } from 'wouter';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
   Bell,
@@ -11,7 +11,7 @@ import {
   Loader2,
   Check,
   AlertCircle,
-  ChevronLeft,
+  ChevronDown,
   Battery,
   Layers,
   AlarmClock,
@@ -53,19 +53,11 @@ const MODE_OPTIONS: { value: NotifyMode; label: string; icon: typeof Bell }[] = 
   { value: 'athan', label: 'أذان', icon: Volume2 },
 ];
 
-interface PermRow {
-  key: keyof PermissionStatus | 'autostart';
-  title: string;
-  desc: string;
-  icon: typeof Bell;
-  action: () => Promise<void>;
-  /** Whether we can verify it (autostart can't be verified). */
-  verifiable: boolean;
-}
-
 export function NotificationSettings() {
   const [prefs, setPrefs] = useState(() => loadPrefs());
   const [busy, setBusy] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [status, setStatus] = useState<{
     text: string;
     tone: 'ok' | 'warn' | 'err';
@@ -129,8 +121,46 @@ export function NotificationSettings() {
     setPrefs(setAthanReciter(id));
   };
 
-  const handleToggleEnabled = (v: boolean) => {
+  /**
+   * One-tap permission flow: requests notification permission, then quietly
+   * asks for battery whitelist. The user only ever sees standard system
+   * popups — no need to navigate any settings page manually.
+   */
+  const handleAllow = async () => {
+    if (requesting) return;
+    setRequesting(true);
+    try {
+      const ok = await requestNotificationsPermission();
+      if (!ok) {
+        flash('يرجى السماح بالإشعارات لتشغيل الأذان', 'warn');
+        // If the user denied or the prompt couldn't show, send them to the
+        // app's notifications settings as a last-resort.
+        await openNotificationSettings();
+      } else {
+        // Quietly request battery whitelist as a follow-up popup.
+        try {
+          await requestIgnoreBattery();
+        } catch {
+          /* ignore */
+        }
+        flash('تم تفعيل الإشعارات بنجاح', 'ok');
+        if (!prefs.enabled) setPrefs(setEnabled(true));
+      }
+    } finally {
+      // Give Android a moment to update its state before re-reading.
+      setTimeout(() => {
+        refreshPerm();
+        setRequesting(false);
+      }, 500);
+    }
+  };
+
+  const handleToggleEnabled = async (v: boolean) => {
     setPrefs(setEnabled(v));
+    if (v && !perm.notifications) {
+      // Turning the master switch on without permission? Ask immediately.
+      await handleAllow();
+    }
   };
 
   const handleReschedule = async () => {
@@ -143,10 +173,7 @@ export function NotificationSettings() {
       const ok = await requestNotificationsPermission();
       await refreshPerm();
       if (!ok) {
-        flash(
-          'يرجى السماح للتطبيق بإرسال الإشعارات من إعدادات الجهاز',
-          'warn',
-        );
+        flash('يرجى السماح بالإشعارات أولاً', 'warn');
         return;
       }
       const r = await scheduleMonthOfPrayers({
@@ -157,10 +184,7 @@ export function NotificationSettings() {
       if (r.offline && r.scheduled === 0) {
         flash('تعذر الجدولة — حاول الاتصال بالإنترنت مرة واحدة', 'err');
       } else {
-        flash(
-          `تمت جدولة ${r.scheduled || r.events} تنبيه للشهر القادم`,
-          'ok',
-        );
+        flash(`تمت جدولة ${r.scheduled || r.events} تنبيه للشهر القادم`, 'ok');
       }
     } catch (e) {
       console.error(e);
@@ -173,6 +197,13 @@ export function NotificationSettings() {
   const handleTest = async () => {
     setBusy(true);
     try {
+      // Make sure we actually have permission before trying.
+      const ok = await requestNotificationsPermission();
+      if (!ok) {
+        flash('يرجى السماح بالإشعارات أولاً', 'warn');
+        await refreshPerm();
+        return;
+      }
       await scheduleTestNotification('Dhuhr');
       flash('سيتم إطلاق التجربة بعد ٥ ثوانٍ', 'ok');
     } catch (e) {
@@ -183,18 +214,14 @@ export function NotificationSettings() {
     }
   };
 
-  const permRows: PermRow[] = [
-    {
-      key: 'notifications',
-      title: 'إذن الإشعارات',
-      desc: 'يسمح للتطبيق بإرسال تنبيهات الصلاة',
-      icon: Bell,
-      verifiable: true,
-      action: async () => {
-        const ok = await requestNotificationsPermission();
-        if (!ok) await openNotificationSettings();
-      },
-    },
+  const advancedRows: {
+    key: keyof PermissionStatus | 'autostart';
+    title: string;
+    desc: string;
+    icon: typeof Bell;
+    action: () => Promise<void>;
+    verifiable: boolean;
+  }[] = [
     {
       key: 'exactAlarm',
       title: 'تنبيهات في الموعد بالضبط',
@@ -202,14 +229,6 @@ export function NotificationSettings() {
       icon: AlarmClock,
       verifiable: true,
       action: openExactAlarmSettings,
-    },
-    {
-      key: 'batteryOptimization',
-      title: 'استثناء من توفير البطارية',
-      desc: 'لكي تعمل التنبيهات والتطبيق مغلق',
-      icon: Battery,
-      verifiable: true,
-      action: requestIgnoreBattery,
     },
     {
       key: 'overlay',
@@ -221,17 +240,15 @@ export function NotificationSettings() {
     },
     {
       key: 'autostart',
-      title: 'التشغيل التلقائي',
-      desc: 'مهم على هواتف Xiaomi و Huawei و Oppo',
+      title: 'التشغيل التلقائي (Xiaomi و Huawei و Oppo)',
+      desc: 'لكي يستمر التطبيق في إرسال التنبيهات بعد إعادة التشغيل',
       icon: SettingsIcon,
       verifiable: false,
       action: openAutostartSettings,
     },
   ];
 
-  const allOk = permRows.every((row) =>
-    row.verifiable ? perm[row.key as keyof PermissionStatus] : true,
-  );
+  const allowed = perm.notifications;
 
   return (
     <div className="min-h-[100dvh] pb-24 px-4 pt-6" dir="rtl">
@@ -280,102 +297,71 @@ export function NotificationSettings() {
         </div>
       )}
 
-      {/* permissions wizard */}
+      {/* one-tap permission card */}
       <div
-        className="rounded-2xl p-4 mb-4"
+        className="rounded-2xl p-5 mb-4"
         style={{
-          background: allOk
-            ? 'linear-gradient(135deg, rgba(34,197,94,0.08), rgba(193,154,107,0.04))'
-            : 'linear-gradient(135deg, rgba(239,68,68,0.08), rgba(193,154,107,0.04))',
-          border: `1px solid ${allOk ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.3)'}`,
+          background: allowed
+            ? 'linear-gradient(135deg, rgba(34,197,94,0.10), rgba(193,154,107,0.05))'
+            : 'linear-gradient(135deg, rgba(193,154,107,0.18), rgba(193,154,107,0.05))',
+          border: `1px solid ${allowed ? 'rgba(34,197,94,0.30)' : 'rgba(193,154,107,0.30)'}`,
         }}
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3 mb-3">
           <div
-            className="text-base font-bold"
-            style={{ fontFamily: '"Tajawal", sans-serif', color: '#C19A6B' }}
-          >
-            إعدادات النظام
-          </div>
-          <div
-            className="text-xs px-2 py-1 rounded-full"
+            className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
             style={{
-              background: allOk ? 'rgba(34,197,94,0.18)' : 'rgba(239,68,68,0.18)',
-              color: allOk ? '#86efac' : '#fca5a5',
+              background: allowed ? 'rgba(34,197,94,0.20)' : 'rgba(193,154,107,0.20)',
+            }}
+          >
+            {allowed ? (
+              <Check className="w-6 h-6 text-green-400" />
+            ) : (
+              <Bell className="w-6 h-6 text-[#C19A6B]" />
+            )}
+          </div>
+          <div className="flex-1 text-right min-w-0">
+            <div
+              className="text-base font-bold"
+              style={{
+                fontFamily: '"Tajawal", sans-serif',
+                color: allowed ? '#86efac' : '#C19A6B',
+              }}
+              data-testid="text-perm-status"
+            >
+              {allowed ? 'الإشعارات مفعّلة' : 'الإشعارات غير مفعّلة'}
+            </div>
+            <div
+              className="text-xs opacity-80 mt-0.5"
+              style={{ fontFamily: '"Tajawal", sans-serif', color: '#C19A6B' }}
+            >
+              {allowed
+                ? 'سيصلك الأذان في وقته بإذن الله'
+                : 'اضغط زر السماح وسيظهر لك إذن الجهاز'}
+            </div>
+          </div>
+        </div>
+
+        {!allowed && (
+          <button
+            onClick={handleAllow}
+            disabled={requesting}
+            data-testid="button-allow-notifications"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold disabled:opacity-60 active:scale-[0.99] transition-transform"
+            style={{
+              background: 'linear-gradient(135deg, #C19A6B, #8B6340)',
+              color: '#fff',
               fontFamily: '"Tajawal", sans-serif',
             }}
-            data-testid="text-perm-status"
           >
-            {allOk ? 'جاهز' : 'يحتاج إعداد'}
-          </div>
-        </div>
-        <div className="space-y-2">
-          {permRows.map((row) => {
-            const Icon = row.icon;
-            const ok = row.verifiable
-              ? perm[row.key as keyof PermissionStatus]
-              : null;
-            return (
-              <button
-                key={row.key}
-                onClick={async () => {
-                  await row.action();
-                  setTimeout(refreshPerm, 600);
-                }}
-                data-testid={`button-perm-${row.key}`}
-                className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all active:scale-[0.98]"
-                style={{
-                  background: 'rgba(255,255,255,0.03)',
-                  border:
-                    ok === false
-                      ? '1.5px solid rgba(239,68,68,0.35)'
-                      : '1px solid rgba(193,154,107,0.18)',
-                }}
-              >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{
-                    background:
-                      ok === true
-                        ? 'rgba(34,197,94,0.18)'
-                        : ok === false
-                          ? 'rgba(239,68,68,0.18)'
-                          : 'rgba(193,154,107,0.15)',
-                  }}
-                >
-                  {ok === true ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : ok === false ? (
-                    <AlertCircle className="w-4 h-4 text-red-400" />
-                  ) : (
-                    <Icon className="w-4 h-4 text-[#C19A6B]" />
-                  )}
-                </div>
-                <div className="flex-1 text-right min-w-0">
-                  <div
-                    className="text-sm font-bold"
-                    style={{
-                      fontFamily: '"Tajawal", sans-serif',
-                      color: ok === true ? '#86efac' : '#C19A6B',
-                    }}
-                  >
-                    {row.title}
-                  </div>
-                  <div
-                    className="text-xs opacity-75 truncate"
-                    style={{
-                      fontFamily: '"Tajawal", sans-serif',
-                      color: '#C19A6B',
-                    }}
-                  >
-                    {row.desc}
-                  </div>
-                </div>
-                <ChevronLeft className="w-4 h-4 text-[#C19A6B] opacity-60 flex-shrink-0" />
-              </button>
-            );
-          })}
-        </div>
+            {requesting ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Bell className="w-5 h-5" />
+            )}
+            السماح بالإشعارات
+          </button>
+        )}
       </div>
 
       {/* master switch */}
@@ -581,11 +567,12 @@ export function NotificationSettings() {
         </button>
       </div>
 
+      {/* status flash */}
       {status && (
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl p-3 text-sm text-center"
+          className="rounded-xl p-3 text-sm text-center mb-3"
           style={{
             background:
               status.tone === 'err'
@@ -613,6 +600,98 @@ export function NotificationSettings() {
           {status.text}
         </motion.div>
       )}
+
+      {/* advanced (collapsed by default) */}
+      <button
+        onClick={() => setAdvancedOpen((o) => !o)}
+        data-testid="button-toggle-advanced"
+        className="w-full flex items-center justify-between py-3 px-4 rounded-2xl mb-2"
+        style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid rgba(193,154,107,0.18)',
+        }}
+      >
+        <span
+          className="text-sm font-bold"
+          style={{ fontFamily: '"Tajawal", sans-serif', color: '#C19A6B' }}
+        >
+          إعدادات متقدمة (إن لم تصل التنبيهات)
+        </span>
+        <motion.div animate={{ rotate: advancedOpen ? 180 : 0 }}>
+          <ChevronDown className="w-4 h-4 text-[#C19A6B]" />
+        </motion.div>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {advancedOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="space-y-2 pb-2">
+              {advancedRows.map((row) => {
+                const Icon = row.icon;
+                const ok = row.verifiable
+                  ? perm[row.key as keyof PermissionStatus]
+                  : null;
+                return (
+                  <button
+                    key={row.key}
+                    onClick={async () => {
+                      await row.action();
+                      setTimeout(refreshPerm, 600);
+                    }}
+                    data-testid={`button-perm-${row.key}`}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl text-right transition-all active:scale-[0.98]"
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(193,154,107,0.15)',
+                    }}
+                  >
+                    <div
+                      className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background:
+                          ok === true
+                            ? 'rgba(34,197,94,0.18)'
+                            : 'rgba(193,154,107,0.15)',
+                      }}
+                    >
+                      {ok === true ? (
+                        <Check className="w-4 h-4 text-green-400" />
+                      ) : (
+                        <Icon className="w-4 h-4 text-[#C19A6B]" />
+                      )}
+                    </div>
+                    <div className="flex-1 text-right min-w-0">
+                      <div
+                        className="text-sm font-bold"
+                        style={{
+                          fontFamily: '"Tajawal", sans-serif',
+                          color: ok === true ? '#86efac' : '#C19A6B',
+                        }}
+                      >
+                        {row.title}
+                      </div>
+                      <div
+                        className="text-xs opacity-75"
+                        style={{
+                          fontFamily: '"Tajawal", sans-serif',
+                          color: '#C19A6B',
+                        }}
+                      >
+                        {row.desc}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
