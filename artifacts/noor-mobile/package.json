@@ -63,6 +63,7 @@
   },
   "dependencies": {
     "expo-av": "^16.0.8",
-    "firebase": "^12.11.0"
+    "firebase": "^12.11.0",
+    "react-native-android-widget": "^0.20.1"
   }
 }
